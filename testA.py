@@ -288,12 +288,19 @@ def main(argv):
     global localPath
     localPath = Path( os.path.abspath(os.path.dirname(sys.argv[0])))
     
-    createNewRootCA("mark1")
+    createNewRootCA("Mark Trust Some Assurance Root CA")
 
     #use the mark1 CA to sign a sub
-    createNewSubCA("mark2", "mark1", None, None )
+    createNewSubCA("Mark Trust Some Assurance Int CA", "Mark Trust Some Assurance Root CA", None, None )
 
-    createNewTlsCert("www.bob.com", "mark2", None, None)
+    createNewSubCA("Mark Trust TLS Issuer 01", "Mark Trust Some Assurance Int CA", None, None )
+    createNewSubCA("Mark Trust TLS Issuer 02", "Mark Trust Some Assurance Int CA", None, None )
+
+
+    createNewTlsCert("www.markgamache.com", "Mark Trust TLS Issuer 01", None, None)
+    createNewTlsCert("checkout.markgamache.com", "Mark Trust TLS Issuer 02", None, None)
+    
+
     
     print("cats") 
     #thisKey =  newRSAKeyPair()  

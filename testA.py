@@ -296,10 +296,10 @@ def main(argv):
     createNewTlsCert("www.bob.com", "mark2", None, None)
     
     print("cats") 
-    thisKey =  newRSAKeyPair()  
+    #thisKey =  newRSAKeyPair()  
 
-    keyToPemFile(thisKey, "nopass.pem", None)
-    keyToPemFile(thisKey, "yesPass.pem", "thePass")
+    #keyToPemFile(thisKey, "nopass.pem", None)
+    #keyToPemFile(thisKey, "yesPass.pem", "thePass")
     
 
 

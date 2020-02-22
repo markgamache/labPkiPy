@@ -33,29 +33,13 @@ class Mode(Enum):
     NewSubCA = 2
     NewLeaf = 3
 
-def newRSAKeyPair():
+def newRSAKeyPair(size = 2048):
     key = rsa.generate_private_key(
     public_exponent=65537,
-    key_size=2048,
+    key_size=size,
     backend=default_backend()
     )
     return key
-
-def readPemKeyFile(fileIn, passphrase = None):
-    if os.path.isfile:
-        f = open(fileIn, "rb")
-        public_pem_data = f.read()
-        f.close()
-
-        if passphrase == None:
-            key = load_pem_public_key(public_pem_data, backend=default_backend())
-        else:
-            key = load_pem_public_key(public_pem_data, passphrase ,  backend=default_backend())
-
-        return key
-    else:
-        throw( "that ain't no file")
-
 
 def keyToPemFile(keyIn, fileName, passphrase):
     
@@ -74,6 +58,18 @@ def keyToPemFile(keyIn, fileName, passphrase):
             encryption_algorithm=serialization.NoEncryption()),
             )
 
+def readPemPrivateKeyFromFile(fileIn, passphrase = None):
+    if os.path.isfile:
+        f = open(fileIn, "rb")
+        public_pem_data = f.read()
+        f.close()
+
+        key = cryptography.hazmat.primitives.serialization.load_pem_private_key(public_pem_data, passphrase ,  backend=default_backend())
+
+        return key
+    else:
+        raise( "that ain't no file")
+
 def createNewRootCaCert(cnIn, keyIn, certFileName):
     subject = issuer = x509.Name([
      x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
@@ -82,6 +78,7 @@ def createNewRootCaCert(cnIn, keyIn, certFileName):
      x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"My Company"),
      x509.NameAttribute(NameOID.COMMON_NAME, (cnIn)),
     ])
+
     cert = x509.CertificateBuilder().subject_name(
      subject
     ).issuer_name(
@@ -95,7 +92,7 @@ def createNewRootCaCert(cnIn, keyIn, certFileName):
     ).not_valid_after(
      # Our certificate will be valid for 10 days
      datetime.datetime.utcnow() + datetime.timedelta(weeks=1000)
-    ).sign(keyIn, hashes.SHA256(), default_backend())
+    ).add_extension(x509.BasicConstraints(ca= True, path_length= None), critical = True).sign(keyIn, hashes.SHA256(), default_backend())
     # Write our certificate out to disk.
     with open(certFileName, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
@@ -110,10 +107,129 @@ def createNewRootCA(shortName: str, passphrase = None):
     os.mkdir(thePath)
 
     #create key and key file
-    thisOneKey = newRSAKeyPair()
+    thisOneKey = newRSAKeyPair(4096)
     keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
     createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem" )
+
+def createNewSubCA(subjectShortName: str, issuerShortName: str, subjectPassphrase = None, issuerPassphrase = None):
+    
+    if subjectPassphrase != None:
+        subjectPassphrase = (subjectPassphrase)
+
+    #create the folder for the sub
+    thePath = (Path( localPath)) / subjectShortName
+    os.mkdir(thePath)
+
+    #create key and key file
+    thisOneKey = newRSAKeyPair(4096)
+    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    
+    #we have key and folder create CSR and sign
+    theCsrWeNeed = createNewCsr(thisOneKey, subjectShortName)
+
+    issCert = readCertFile(((Path( localPath)) / issuerShortName) / "cert.pem")
+    issCaKey = readPemPrivateKeyFromFile(((Path( localPath)) / issuerShortName) / "key.pem", issuerPassphrase)
+    subCertFileName = thePath / "cert.pem"
+
+    theSubCACert = signSubCaCsrWithCaKey(theCsrWeNeed, issCert, issCaKey)
+    # Write our certificate out to disk.
+    with open(subCertFileName, "wb") as f:
+        f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
+
+def createNewCsr(privKeyIn, cnIn):
+    thisCsr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
+     # Provide various details about who we are.
+     x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
+     x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"California"),
+     x509.NameAttribute(NameOID.LOCALITY_NAME, u"San Francisco"),
+     x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"My Company"),
+     x509.NameAttribute(NameOID.COMMON_NAME, cnIn), ])).sign(privKeyIn, hashes.SHA256(), default_backend())
+
+    return thisCsr
+
+def signSubCaCsrWithCaKey(csrIn, issuerCert, caKeyIn):
+    
+    #we need the CA priv Key,  CA cert to get issuer info, and the CSR
+    cert = x509.CertificateBuilder().subject_name(
+     csrIn.subject
+    ).issuer_name(
+     issuerCert.subject
+    ).public_key(
+     csrIn.public_key()
+    ).serial_number(
+     x509.random_serial_number()
+    ).not_valid_before(
+     datetime.datetime.utcnow()
+    ).not_valid_after(
+     # Our certificate will be valid for 10 days
+     datetime.datetime.utcnow() + datetime.timedelta(weeks=500)
+    ).add_extension(x509.BasicConstraints(ca= True, path_length= None), critical = True ).sign(caKeyIn, hashes.SHA256(), default_backend())
+
+    return cert
+
+def signTlsCsrWithCaKey(csrIn, issuerCert, caKeyIn):
+    
+    #we need the CA priv Key,  CA cert to get issuer info, and the CSR
+    cert = x509.CertificateBuilder().subject_name(
+     csrIn.subject
+    ).issuer_name(
+     issuerCert.subject
+    ).public_key(
+     csrIn.public_key()
+    ).serial_number(
+     x509.random_serial_number()
+    ).not_valid_before(
+     datetime.datetime.utcnow()
+    ).not_valid_after(
+     # Our certificate will be valid for 10 days
+     datetime.datetime.utcnow() + datetime.timedelta(weeks=500)
+    ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True 
+    ).add_extension(x509.BasicConstraints(ca= False, path_length= None), critical = True).sign(caKeyIn, hashes.SHA256(), default_backend())
+
+    return cert
+
+def createNewTlsCert(subjectShortName: str, issuerShortName: str, subjectPassphrase = None, issuerPassphrase = None):
+    
+    if subjectPassphrase != None:
+        subjectPassphrase = (subjectPassphrase)
+
+    #create the folder for the sub
+    thePath = (Path( localPath)) / subjectShortName
+    os.mkdir(thePath)
+
+    #create key and key file
+    thisOneKey = newRSAKeyPair(2048)
+    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    
+    #we have key and folder create CSR and sign
+    theCsrWeNeed = createNewCsr(thisOneKey, subjectShortName)
+
+    issCert = readCertFile(((Path( localPath)) / issuerShortName) / "cert.pem")
+    issCaKey = readPemPrivateKeyFromFile(((Path( localPath)) / issuerShortName) / "key.pem", issuerPassphrase)
+    subCertFileName = thePath / "cert.pem"
+
+    theTlsCert = signTlsCsrWithCaKey(theCsrWeNeed, issCert, issCaKey)
+    # Write our certificate out to disk.
+    with open(subCertFileName, "wb") as f:
+        f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
+
+
+def readCertFile(fileNameIn : Path):
+    
+    if os.path.isfile(fileNameIn):
+        with open(fileNameIn, "rb") as f:
+            myDat = f.read()
+            f.close()
+        try:
+            theCert = cryptography.x509.load_pem_x509_certificate(myDat, backend=default_backend())
+            return theCert
+        except Exception as exCer:
+            print(exCer)
+    else:
+        print("{} is not a file".format(fileNameIn))
+        raise
+
 
 global currentMode
 currentMode = None
@@ -124,18 +240,24 @@ targetFolder = None
 def main(argv):
     
     try:
-        opts, args = getopt.getopt(argv,"hm:n:v",list())
-    except getopt.GetoptError:
+        opts, args = getopt.getopt(argv,"hm:n:v", ["mode=","help", "name="])
+    except getopt.GetoptError as optFail:
+        print(optFail.msg)
         print(syntax )
         sys.exit(2)
     
+    if len(args) > 0:
+        print("You have an argument set that is not tied to a switch")
+        print(syntax )
+        sys.exit(2)
+
     for opt, arg in opts:
-        if opt == "-n":
+        if opt == "-n" or opt == "--name":
             #this is the new CA short name
             #need to check for folder name and if not there. if there throw. if not create foler and CA later
             pass
 
-        elif opt == "-m":
+        elif opt == "--mode" or opt == "-m":
             #mode will be MOde.whatever
             global currentMode
             if arg == Mode.NewRootCA.name:
@@ -148,29 +270,31 @@ def main(argv):
                 
                 currentMode =  Mode.NewLeaf
             else:
-                print("Your mode, -m must be NewRootCA, NewSubCA, or NewLeaf")
+                print("Your mode must be NewRootCA, NewSubCA, or NewLeaf")
                 print(syntax)
                 sys.exit()
 
-        elif opt == "-h":
+        elif opt == "-h" or opt == "--help":
             print(syntax)
             sys.exit()
         elif opt == "-v":
             global verbose
             verbose = True
         else:
-            pass
+            print("{} is not a valid argument or flag".format(opt))
 
 
     #magic begins here
     global localPath
     localPath = Path( os.path.abspath(os.path.dirname(sys.argv[0])))
     
-    
-
     createNewRootCA("mark1")
 
+    #use the mark1 CA to sign a sub
+    createNewSubCA("mark2", "mark1", None, None )
 
+    createNewTlsCert("www.bob.com", "mark2", None, None)
+    
     print("cats") 
     thisKey =  newRSAKeyPair()  
 

@@ -204,7 +204,7 @@ def signTlsCsrWithCaKey(csrIn, issuerCert, caKeyIn):
      datetime.datetime.utcnow()
     ).not_valid_after(
      # Our certificate will be valid for 10 days
-     datetime.datetime.utcnow() + datetime.timedelta(weeks=500)
+     datetime.datetime.utcnow() + datetime.timedelta(weeks=52)
     ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True 
     ).add_extension(x509.BasicConstraints(ca= False, path_length= None), critical = True
     ).add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False  

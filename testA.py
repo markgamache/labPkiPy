@@ -97,6 +97,11 @@ def createNewRootCaCert(cnIn, keyIn, certFileName):
     with open(certFileName, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 
+    #also do a fun named cer verions
+    fileName = getFileNameFromCert(cert)
+    with open(certFileName.parent / fileName, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+
 def createNewRootCA(shortName: str, passphrase = None):
     
     if passphrase != None:
@@ -137,6 +142,11 @@ def createNewSubCA(subjectShortName: str, issuerShortName: str, subjectPassphras
     with open(subCertFileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
 
+    #also do a fun named cer verions
+    fileName = getFileNameFromCert(theSubCACert)
+    with open(thePath / fileName, "wb") as f:
+        f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
+
 def createNewCsr(privKeyIn, cnIn):
     thisCsr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
      # Provide various details about who we are.
@@ -147,6 +157,16 @@ def createNewCsr(privKeyIn, cnIn):
      x509.NameAttribute(NameOID.COMMON_NAME, cnIn), ])).sign(privKeyIn, hashes.SHA256(), default_backend())
 
     return thisCsr
+
+def getFileNameFromCert(certIn : cryptography.x509):
+    
+    cnPart = certIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+    cnPart = cnPart.replace(" " , "")
+    serPart = str(hex(certIn.serial_number))
+    cnPart = "{}_{}.cer".format(cnPart, serPart[-6:-1]) 
+    
+    return cnPart
+ 
 
 def signSubCaCsrWithCaKey(csrIn, issuerCert, caKeyIn):
     
@@ -170,6 +190,7 @@ def signSubCaCsrWithCaKey(csrIn, issuerCert, caKeyIn):
 
 def signTlsCsrWithCaKey(csrIn, issuerCert, caKeyIn):
     
+    hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
     cert = x509.CertificateBuilder().subject_name(
      csrIn.subject
@@ -185,7 +206,9 @@ def signTlsCsrWithCaKey(csrIn, issuerCert, caKeyIn):
      # Our certificate will be valid for 10 days
      datetime.datetime.utcnow() + datetime.timedelta(weeks=500)
     ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True 
-    ).add_extension(x509.BasicConstraints(ca= False, path_length= None), critical = True).sign(caKeyIn, hashes.SHA256(), default_backend())
+    ).add_extension(x509.BasicConstraints(ca= False, path_length= None), critical = True
+    ).add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False  
+    ).sign(caKeyIn, hashes.SHA256(), default_backend())
 
     return cert
 
@@ -214,6 +237,13 @@ def createNewTlsCert(subjectShortName: str, issuerShortName: str, subjectPassphr
     with open(subCertFileName, "wb") as f:
         f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
 
+    #also do a fun named cer verions
+    fileName = getFileNameFromCert(theTlsCert)
+    with open(thePath / fileName, "wb") as f:
+        f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
+    
+    buildChain(theTlsCert, subjectShortName)
+
 
 def readCertFile(fileNameIn : Path):
     
@@ -230,6 +260,390 @@ def readCertFile(fileNameIn : Path):
         print("{} is not a file".format(fileNameIn))
         raise
 
+def loadCertsFromFolder(folderName : Path) -> list:
+    dBack = list()
+    for r, d, f in os.walk(folderName, topdown=False):
+        #print(r)
+        for file in f:
+            fullName = Path(r) / file
+
+            if fullName.suffix.lower() not in [".pem",".crt",".cer"]:
+                continue
+            
+            if fullName.parts[-1] == "key.pem":
+                continue
+            #do work
+            theRes = (readCertFileListBack(fullName)[0])
+            if theRes != None:
+                dBack.append( theRes)
+
+    return dBack
+
+def parseCertsFromPEMs(pemText : str) -> list:
+    """
+    this creates a list of x509 objects from text that is PEMs cat'd together
+    """
+    lines = pemText.split("\n")
+    
+    realist = list()
+    ht = {}
+    index = 0
+    inCert = False
+    for line in lines:
+        if line.lower().find("-----beg") > -1:
+            inCert = True
+            curCert = "-----BEGIN CERTIFICATE-----\n"
+            continue
+
+        elif inCert == True and line.lower().find("-----end") < 0:
+            curCert += (line + "\n")
+            continue
+
+        elif inCert == True and line.lower().find("-----end") > -1:
+            curCert += "-----END CERTIFICATE-----\n"
+            ht.update({index : curCert})
+            index +=1
+
+            theCert = None
+            theCert = x509.load_pem_x509_certificate(curCert.encode('utf-8'), default_backend())
+            realist.append(theCert)
+
+    return realist
+
+def bIsThisCertInThisList(cert : x509.Certificate, certList : list) -> bool:
+    """
+    Checks if one cert is in a list of certs and returns a bool
+    """
+    bIsInList = False
+    for oneMem in certList:
+        if oneMem.subject.rfc4514_string() == cert.subject.rfc4514_string():
+            if oneMem.fingerprint == cert.fingerprint:
+                return True
+    
+    return bIsInList
+
+def diffCertLists(leftList : list, rightList : list) -> dict:
+    """
+    Return diff between to lists of certs    
+    """
+    missingFromLeft = list()
+    missingFromRight = list()
+    for oLeft in leftList:
+        if oLeft not in rightList:
+            missingFromLeft.append(oLeft)
+            continue
+        #if bIsThisCertInThisList(oLeft, rightList) == False:
+            #in right but not left
+            #missingFromLeft.append(oLeft)
+
+    for oRight in rightList:
+        if oRight not in leftList:
+            missingFromRight.append(oRight)
+            continue
+        #if bIsThisCertInThisList(oRight, leftList) == False:
+            #in left but not in right
+            #missingFromRight.append(oRight)
+            
+    result =  {'MissingFromRight' : missingFromRight , 'MissingFromLeft' : missingFromLeft}
+    return result
+
+def appendFile(file : Path, text : str):
+    tFile = open(file, "a")
+    tFile.write(text)
+    tFile.flush()
+    tFile.close()
+
+def get_certificates(self):
+    from OpenSSL.crypto import  _ffi, _lib, X509
+    """
+    Returns all certificates for the PKCS7 structure, if present. Only
+    objects of type *signed* or *signed and enveloped* can embed
+    certificates.
+    :return: The certificates in the PKCS7, or ``None`` if
+        there are none.
+    :rtype: :class:`tuple` of :class:`X509` or ``None``
+    """
+    
+    certs = _ffi.NULL
+    if self.type_is_signed():
+        certs = self._pkcs7.d.sign.cert
+    elif self.type_is_signedAndEnveloped():
+        certs = self._pkcs7.d.signed_and_enveloped.cert
+
+    pycerts = []
+    for i in range(_lib.sk_X509_num(certs)):
+        x509 = _ffi.gc(_lib.X509_dup(_lib.sk_X509_value(certs, i)),
+                        _lib.X509_free)
+        pycert = X509._from_raw_x509_ptr(x509)
+        pycerts.append(pycert.to_cryptography())
+    if pycerts:
+        return tuple(pycerts)
+
+def readP7BFile(file: Path) -> list:
+    
+    if os.path.isfile(file):
+
+        cFile = open(file, "rb")
+        databack = cFile.read()
+        cFile.close()
+        try:
+            bob = OpenSSL.crypto.load_pkcs7_data(FILETYPE_PEM , databack)
+            
+            certs = get_certificates(bob)
+        except Exception as e:
+            try:
+                bob = OpenSSL.crypto.load_pkcs7_data(FILETYPE_ASN1 , databack)
+                certs = get_certificates(bob)
+            except Exception as e:
+                #probbly not pkcs7
+                certs = list()
+        return certs
+    else:
+        print("{} is not a file".format(file))
+
+def readCertFileListBack(file: Path) -> list:
+    
+    if os.path.isfile(file):
+        certs = list()
+        cFile = open(file, "rb")
+        databack = cFile.read()
+        cFile.close()
+        try:
+            bob = x509.load_pem_x509_certificate(databack, default_backend())
+            certs.append(bob)
+        except Exception as e:
+            try:
+                bob = x509.load_der_x509_certificate(databack, default_backend())
+                certs.append(bob)
+            except Exception as e:
+                #probbly not pkcs7
+                
+                raise
+        return certs
+    else:
+        print("{} is not a file".format(file))
+
+def screen(data : str):
+    """
+    If verbose, print to screen
+    """
+    global verbose
+    if verbose:
+        print(data)
+
+def findParentCertInList(child, certList):
+    found = False
+    for isThatYouDad in certList:
+        if isThatYouDad.subject.rfc4514_string() == child.issuer.rfc4514_string() :
+            #possible match must test.
+            
+            signature_hash_algorithm = child.signature_hash_algorithm
+            signature_bytes = child.signature
+            signer_public_key = isThatYouDad.public_key()
+
+            if isinstance(signer_public_key, rsa.RSAPublicKey):
+                verifier = signer_public_key.verifier(
+                    signature_bytes, padding.PKCS1v15(), signature_hash_algorithm
+                )
+            elif isinstance(signer_public_key, ec.EllipticCurvePublicKey):
+                verifier = signer_public_key.verifier(
+                    signature_bytes, ec.ECDSA(signature_hash_algorithm)
+                )
+            else:
+                verifier = signer_public_key.verifier(
+                    signature_bytes, signature_hash_algorithm
+                )
+
+            verifier.update(child.tbs_certificate_bytes)
+            try:
+                verifier.verify()
+                return isThatYouDad
+            except:
+                #do nothing
+                pass
+    return found
+
+def bIsRootCA(cert : cryptography.x509.Certificate) -> bool:
+
+    if cert.issuer.rfc4514_string() == cert.subject.rfc4514_string() and bIsCA(cert):
+        return True
+    else:
+        return False
+
+def bIsCA(cert : cryptography.x509.Certificate) -> bool:
+
+    for ext in cert.extensions:
+        if ext.oid._name == "basicConstraints":
+            return ext.value.ca
+
+def getIssuerFromAIA(certIn : cryptography.x509.Certificate) -> cryptography.x509.Certificate:
+    """
+    Use the AIA to get a copy of the Issuer cert.  Works with HTTP only, no LDAP now.
+    """
+    found = False
+    for ext in certIn.extensions:
+        if ext.oid._name == "authorityInfoAccess" :
+            #print(ext.oid._name)
+            for aia in ext.value:
+                if aia.access_method._name == "caIssuers":
+                    URL = aia.access_location.value
+                    if URL.startswith("http"):
+                        #get this URL
+                        try:
+                            databack = requests.get(URL, stream=False, timeout=25)
+                            theCert = x509.load_der_x509_certificate(databack.content, default_backend())
+                            return theCert
+                        except Exception as e:
+                            print(e)
+
+                        
+
+            pass
+    if not found:
+        return False
+
+def printCertList(certList : list()):
+    for cer in certList:
+        print(cer.subject.rfc4514_string())
+
+def createOrderedCertChain(certs : list) -> list:
+    """
+    Takes in a cert or list of certs. Finds the entity cert to start the chain. Then builds the chain, first from cacerts list, if applicable.
+    Then trying AIA, and finally the Mozilla root list as needed.
+    returns the chain as a list of certs with the entity first and including the root.
+
+    """
+    ordList = list()
+    root = None
+    entityCert = None
+    entCount = 0
+
+    #make sure we have only one leaf cert and make it the start of the chain
+    for cer in certs:
+        if not bIsCA(cer):
+            entityCert = cer
+            entCount += 1
+            ordList.append(entityCert)
+        if cer.issuer.rfc4514_string() == cer.subject.rfc4514_string():
+            root = cer
+            
+    if entCount > 1:
+        raise Exception("There is more than one entity certificate in the collection. You must process manually") 
+
+    if entCount == 0:
+        raise Exception("There is no entity certificate in the collection. You must process manually. You may have the wrong file") 
+
+    #the found leaf is the child for now
+    child = entityCert
+    while(True):
+
+
+        global folderCerts
+        parent = findParentCertInList(child, folderCerts)
+        if parent == False:
+            #todo: incomplete chain need to use AIA to get parent  
+            parent = getIssuerFromAIA(child)
+            if parent == False:
+                global mozRoots
+                parent = findParentCertInList(child, mozRoots)
+                if parent == False:
+                    print("Having trouble building the chain. Here is what we have.\n")
+                    printCertList(ordList)
+                    print("This cert is :\n  Subject: {} \n  Issuer: {}".format(child.subject.rfc4514_string(),child.issuer.rfc4514_string()))
+                    print("\nThis may be due to bad PKI Vendor practices around cross-signing or AIAs\n")
+                    print("Find Issuer {} \n and place it in the cacerts folder".format(child.issuer.rfc4514_string()))
+            
+                    raise Exception("Could not find Issuer {} \nYou will need to figure this out.  =()".format(child.issuer.rfc4514_string()))
+                else:
+                    print("Had to find a parent for {} at Mozilla".format(child.issuer.rfc4514_string()))
+            pass
+        if bIsRootCA(parent):
+            #not done
+            ordList.append(parent)
+            return ordList
+        else:
+            ordList.append(parent)
+
+        child = parent
+
+def certListToCatdPEM(certs : list):
+    pemData = ""
+    for cert in certs:
+        ccc = (cert.public_bytes(encoding=serialization.Encoding.PEM)).decode("utf-8")
+        pemData += ccc
+    
+    return pemData
+
+def getMozillaRoots() -> list:
+    """
+    Gets the list of current Moz roots from a static URL and converts them to a list of certs
+    """
+    try:
+        url = "https://ccadb-public.secure.force.com/mozilla/IncludedCACertificateReportPEMCSV"
+        databack = requests.get(url, stream=False, timeout=25)
+        lines = databack.text.split("\n")
+        
+        realist = list()
+        ht = {}
+        index = 0
+        inCert = False
+        for line in lines:
+            if line.lower().find("-----beg") > -1:
+                inCert = True
+                curCert = "-----BEGIN CERTIFICATE-----\n"
+                continue
+
+            elif inCert == True and line.lower().find("-----end") < 0:
+                curCert += (line + "\n")
+                continue
+
+            elif inCert == True and line.lower().find("-----end") > -1:
+                curCert += "-----END CERTIFICATE-----\n"
+                ht.update({index : curCert})
+                index +=1
+
+                theCert = None
+                theCert = x509.load_pem_x509_certificate(curCert.encode('utf-8'), default_backend())
+                realist.append(theCert)
+
+        return realist
+    except requests.exceptions.ConnectionError:
+        print("Couldn't {}\n\n".format(url))
+        raise
+
+def getCnFromRDN(rdn : cryptography.x509.name.Name) -> str:
+    for part in rdn:
+        if part.oid._name == "commonName":
+            return part.value
+
+    return None
+     
+def analyzeChainFile(certList : list):
+    
+    i = 0
+    for oCert in certList:
+        print("Cert[{}]".format(i))
+        print("  Subject: {} \n  Issuer: {}\n".format(oCert.subject.rfc4514_string(),oCert.issuer.rfc4514_string()))
+                
+        i+=1
+
+def buildChain(certIn, shortName):
+    global folderCerts
+    folderCerts = loadCertsFromFolder(localPath)
+    theList = list()
+    theList.append(certIn)
+    orderedCerts = createOrderedCertChain(theList)
+
+    del orderedCerts[0]
+    strOfPEMs = certListToCatdPEM(orderedCerts)
+
+    outFile = (localPath / shortName) / "chain.pem"
+            
+    if os.path.isfile(outFile):
+        os.remove(outFile)
+    wFile = open(outFile, "w")
+    wFile.write(strOfPEMs)
+    wFile.close()
 
 global currentMode
 currentMode = None

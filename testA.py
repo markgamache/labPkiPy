@@ -212,6 +212,30 @@ def signTlsCsrWithCaKey(csrIn, issuerCert, caKeyIn):
 
     return cert
 
+def signTlsCsrWithCaKeyNoAddSan(csrIn, issuerCert, caKeyIn):
+    
+    hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+    #we need the CA priv Key,  CA cert to get issuer info, and the CSR
+    cert = x509.CertificateBuilder().subject_name(
+     csrIn.subject
+    ).issuer_name(
+     issuerCert.subject
+    ).public_key(
+     csrIn.public_key()
+    ).serial_number(
+     x509.random_serial_number()
+    ).not_valid_before(
+     datetime.datetime.utcnow()
+    ).not_valid_after(
+     # Our certificate will be valid for 10 days
+     datetime.datetime.utcnow() + datetime.timedelta(weeks=52)
+    ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True 
+    ).add_extension(x509.BasicConstraints(ca= False, path_length= None), critical = True
+    ).sign(caKeyIn, hashes.SHA256(), default_backend())
+
+    return cert
+
+
 def createNewTlsCert(subjectShortName: str, issuerShortName: str, subjectPassphrase = None, issuerPassphrase = None):
     
     if subjectPassphrase != None:
@@ -243,7 +267,6 @@ def createNewTlsCert(subjectShortName: str, issuerShortName: str, subjectPassphr
         f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
     
     buildChain(theTlsCert, subjectShortName)
-
 
 def readCertFile(fileNameIn : Path):
     
@@ -645,6 +668,57 @@ def buildChain(certIn, shortName):
     wFile.write(strOfPEMs)
     wFile.close()
 
+def signCsrNoQuestionsTlsServer(csrFile:Path(), issuerShortName: str, subjectPassphrase = None, issuerPassphrase = None  ):
+    #load the csr
+    csr = None
+    if os.path.isfile(csrFile):
+        fh = open(csrFile, "rb" )
+        fData = fh.read()
+        fh.close()
+        try:
+            csr = x509.load_pem_x509_csr(fData, default_backend())
+            
+        except:
+            try:
+                csr = x509.load_der_x509_csr(fData, default_backend())
+                
+            except:
+                raise
+
+        #should have a csr here
+        #make it into a cert object for signing
+        if subjectPassphrase != None:
+            subjectPassphrase = (subjectPassphrase)
+
+        subjectShortName = getCnFromRDN(csr.subject)
+        #create the folder for the sub
+        thePath = (Path( localPath)) / subjectShortName
+        os.mkdir(thePath)
+
+        #create key and key file. NOt needed for CSR only
+        #thisOneKey = newRSAKeyPair(2048)
+        #keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+                
+        #we have key and folder create CSR and sign
+        #theCsrWeNeed = createNewCsr(thisOneKey, subjectShortName)
+        theCsrWeNeed = csr
+        issCert = readCertFile(((Path( localPath)) / issuerShortName) / "cert.pem")
+        issCaKey = readPemPrivateKeyFromFile(((Path( localPath)) / issuerShortName) / "key.pem", issuerPassphrase)
+        subCertFileName = thePath / "cert.pem"
+
+        theTlsCert = signTlsCsrWithCaKeyNoAddSan(theCsrWeNeed, issCert, issCaKey)
+        # Write our certificate out to disk.
+        with open(subCertFileName, "wb") as f:
+            f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
+
+        #also do a fun named cer verions
+        fileName = getFileNameFromCert(theTlsCert)
+        with open(thePath / fileName, "wb") as f:
+            f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
+        
+        buildChain(theTlsCert, subjectShortName)
+
+
 global currentMode
 currentMode = None
 
@@ -703,6 +777,8 @@ def main(argv):
     localPath = Path( os.path.abspath(os.path.dirname(sys.argv[0])))
     
     createNewRootCA("Mark Trust Some Assurance Root CA")
+    signCsrNoQuestionsTlsServer("testFiles\\venafi-vip-2-domain.com.csr", "Mark Trust Some Assurance Root CA", None, None)
+    
 
     #use the mark1 CA to sign a sub
     createNewSubCA("Mark Trust Some Assurance Int CA", "Mark Trust Some Assurance Root CA", None, None )

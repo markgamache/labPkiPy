@@ -158,6 +158,19 @@ def createNewCsr(privKeyIn, cnIn):
 
     return thisCsr
 
+def createNewCsrSFDC(privKeyIn, cnIn):
+    thisCsr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
+     # Provide various details about who we are.
+     x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
+     x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"California"),
+     x509.NameAttribute(NameOID.LOCALITY_NAME, u"San Francisco"),
+     x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"salesforce.com, inc."),
+     x509.NameAttribute(NameOID.COMMON_NAME, cnIn), ])).add_extension(x509.SubjectAlternativeName([x509.DNSName(cnIn)]), critical=False  
+    ).sign(privKeyIn, hashes.SHA256(), default_backend())
+
+    return thisCsr
+
+
 def getFileNameFromCert(certIn : cryptography.x509):
     
     cnPart = certIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
@@ -265,6 +278,30 @@ def createNewTlsCert(subjectShortName: str, issuerShortName: str, subjectPassphr
         f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
     
     buildChain(theTlsCert, subjectShortName)
+
+def createNewTlsCsr(subjectShortName: str, subjectPassphrase = None):
+    
+    if subjectPassphrase != None:
+        subjectPassphrase = (subjectPassphrase)
+
+    #create the folder for the sub
+    thePath = (Path( localPath)) / subjectShortName
+    os.mkdir(thePath)
+
+    #create key and key file
+    thisOneKey = newRSAKeyPair(2048)
+    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    
+    #we have key and folder create CSR and sign
+    theCsrWeNeed = createNewCsrSFDC(thisOneKey, subjectShortName)
+
+    fileName = thePath / "file.csr"
+    with open(fileName, "wb") as f:
+            f.write(theCsrWeNeed.public_bytes(
+            encoding=serialization.Encoding.PEM),
+            )
+
+    print(" ")
 
 def readCertFile(fileNameIn : Path):
     
@@ -774,6 +811,8 @@ def main(argv):
     global localPath
     localPath = Path( os.path.abspath(os.path.dirname(sys.argv[0])))
     
+    createNewTlsCsr("cert2.salesforce.com" , subjectPassphrase="sdfajsklf!jWasEd4lkf")
+
     #createNewRootCA("Mark Trust Some Assurance Root CA")
     signCsrNoQuestionsTlsServer("testFiles\\venafi-vip-2-domain.com.csr", "Mark Trust Some Assurance Root CA", None, None)
     

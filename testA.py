@@ -167,7 +167,6 @@ def getFileNameFromCert(certIn : cryptography.x509):
     
     return cnPart
  
-
 def signSubCaCsrWithCaKey(csrIn, issuerCert, caKeyIn):
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -234,7 +233,6 @@ def signTlsCsrWithCaKeyNoAddSan(csrIn, issuerCert, caKeyIn):
     ).sign(caKeyIn, hashes.SHA256(), default_backend())
 
     return cert
-
 
 def createNewTlsCert(subjectShortName: str, issuerShortName: str, subjectPassphrase = None, issuerPassphrase = None):
     

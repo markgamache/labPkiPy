@@ -753,6 +753,8 @@ def signCsrNoQuestionsTlsServer(csrFile:Path(), issuerShortName: str, subjectPas
         
         buildChain(theTlsCert, subjectShortName)
 
+#end fucntions
+
 
 global currentMode
 currentMode = None
@@ -760,10 +762,13 @@ currentMode = None
 global targetFolder
 targetFolder = None
 
+global verbose
+verbose = False          
+
 def main(argv):
     
     try:
-        opts, args = getopt.getopt(argv,"hm:n:v", ["mode=","help", "name="])
+        opts, args = getopt.getopt(argv,"hm:n:vs:c:", ["mode=","help", "name=", "signer=", "csr="])
     except getopt.GetoptError as optFail:
         print(optFail.msg)
         print(syntax )
@@ -800,6 +805,16 @@ def main(argv):
         elif opt == "-h" or opt == "--help":
             print(syntax)
             sys.exit()
+
+        #signer
+        elif opt == "-s" or opt == "--signer":
+            print("")
+
+        #csr to sign
+        elif opt == "-c" or opt == "--csr":
+            print("")
+
+
         elif opt == "-v":
             global verbose
             verbose = True
@@ -811,7 +826,7 @@ def main(argv):
     global localPath
     localPath = Path( os.path.abspath(os.path.dirname(sys.argv[0])))
     
-    createNewTlsCsr("cert2.salesforce.com" , subjectPassphrase="sdfajsklf!jWasEd4lkf")
+    createNewTlsCsr("cert2.salesforce.com" , subjectPassphrase="ssssssss")
 
     #createNewRootCA("Mark Trust Some Assurance Root CA")
     signCsrNoQuestionsTlsServer("testFiles\\venafi-vip-2-domain.com.csr", "Mark Trust Some Assurance Root CA", None, None)

@@ -763,7 +763,14 @@ global targetFolder
 targetFolder = None
 
 global verbose
-verbose = False          
+verbose = False        
+
+global subjectCN  
+subjectCN = "blank"
+
+global signerCN  
+signerCN = "blank"
+
 
 def main(argv):
     
@@ -783,6 +790,8 @@ def main(argv):
         if opt == "-n" or opt == "--name":
             #this is the new CA short name
             #need to check for folder name and if not there. if there throw. if not create foler and CA later
+            global subjectCN  
+            subjectCN = arg
             pass
 
         elif opt == "--mode" or opt == "-m":
@@ -808,10 +817,12 @@ def main(argv):
 
         #signer
         elif opt == "-s" or opt == "--signer":
-            print("")
+            global signerCN  
+            signerCN = arg
 
         #csr to sign
         elif opt == "-c" or opt == "--csr":
+            #see if the file is legit
             print("")
 
 

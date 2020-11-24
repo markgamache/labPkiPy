@@ -1,0 +1,1 @@
+http://markgamache.s3.amazonaws.com/MarkTrustSomeAssuranceRootCA_f55d2.crt

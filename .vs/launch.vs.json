@@ -1,0 +1,18 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "python",
+      "interpreter": "(default)",
+      "interpreterArguments": "",
+      "scriptArguments": "-m SignCRL -s \"powerCA\"",
+      "env": {},
+      "nativeDebug": false,
+      "webBrowserUrl": "",
+      "project": "testA.py",
+      "projectTarget": "",
+      "name": "testA.py"
+    }
+  ]
+}

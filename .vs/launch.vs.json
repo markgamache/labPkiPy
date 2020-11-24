@@ -6,7 +6,7 @@
       "type": "python",
       "interpreter": "(default)",
       "interpreterArguments": "",
-      "scriptArguments": "-m SignCRL -s \"Mark Trust Some Assurance Root CA\"",
+      "scriptArguments": "-m NewSubCaFromCSR -s testRoot -c E:\\source\\labPkiPy\\specSubCa\\file.csr",
       "env": {},
       "nativeDebug": false,
       "webBrowserUrl": "",

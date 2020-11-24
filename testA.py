@@ -455,12 +455,16 @@ def createCRL( issuerShortName: str,  issuerPassphrase = None):
                 serials.append("0x{}".format(ii)) 
     else:
         print("{} does not exist in your CA folder.  It should be a txt file full of serial numbers".format(revFile))
-        print("Creating and empty CRL to publish")
+        print("Creating an empty CRL to publish")
 
     builder = x509.CertificateRevocationListBuilder()
     builder = builder.issuer_name(issCert.subject)
     builder = builder.last_update(datetime.datetime.today() - datetime.timedelta(days =1))
-    builder = builder.next_update(datetime.datetime.today() + datetime.timedelta(days =90))
+
+    if issCert.subject == issCert.issuer:
+        builder = builder.next_update(datetime.datetime.today() + datetime.timedelta(days =180))
+    else:    
+        builder = builder.next_update(datetime.datetime.today() + datetime.timedelta(days =90))
     
     for s in serials:
         revoked_cert = x509.RevokedCertificateBuilder().serial_number(int( s, 16)).revocation_date(

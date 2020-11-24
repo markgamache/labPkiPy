@@ -6,7 +6,7 @@
       "type": "python",
       "interpreter": "(default)",
       "interpreterArguments": "",
-      "scriptArguments": "-m SignCRL -s \"powerCA\"",
+      "scriptArguments": "-m SignCRL -s \"Mark Trust Some Assurance Root CA\"",
       "env": {},
       "nativeDebug": false,
       "webBrowserUrl": "",

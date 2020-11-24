@@ -26,7 +26,12 @@ from enum import Enum
 
 
 
-syntax = "The stuff you type"
+syntax = "-m for mode :  must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR,  or NewLeafTLS\r\n"
+syntax += "-s for signer. This will be the CN of the signer\r\n"
+syntax += "-n for the subject Name. This will be the CN of the new item. Could be a TLS cert or CA\r\n"
+syntax += "-h for help\r\n"
+syntax += "-c for the path to a CSR file for signing\r\n"
+syntax += "-v for verbose. Sorry not very verbose now\r\n"
 
 class Mode(Enum):
     NewRootCA = 1
@@ -512,6 +517,7 @@ def createNewTlsCsrFile(subjectShortName: str, subjectPassphrase = None):
             f.write(theCsrWeNeed.public_bytes(
             encoding=serialization.Encoding.PEM),
             )
+    print("Your CSR file is {}".format(fileName))
 
 
 def createNewCaCsrFile(subjectShortName: str, subjectPassphrase = None):
@@ -537,6 +543,7 @@ def createNewCaCsrFile(subjectShortName: str, subjectPassphrase = None):
             f.write(theCsrWeNeed.public_bytes(
             encoding=serialization.Encoding.PEM),
             )
+    print("Your CSR file is {}".format(fileName))
 
         
 
@@ -1208,6 +1215,7 @@ def main(argv):
     
     if currentMode == None:
         print("Your -m or --mode must be set")
+        print("Your mode must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR,  or NewLeafTLS")
         print(syntax)
         sys.exit()
 

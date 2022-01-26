@@ -7,8 +7,6 @@ The current state is mostly related to positive test cases, however some of the 
 
 *improper path len
 
-*violated name constraints (not there yet)
-
 *very long path len
 
 *wrong AIAs
@@ -19,12 +17,11 @@ The current state is mostly related to positive test cases, however some of the 
 
 *Name constraints use
 
-*Name constraints violations 
+*Name constraints violations (not there yet)
 
 *EKU mistakes 
 
 *SSL cert signed by SSL certs, etc.
-
 
 AIAs are stamped based on a file in the issuer folder called aia.txt
 CDPs are stamped based on a file in the issuer folder called cdp.txt

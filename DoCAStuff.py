@@ -28,7 +28,7 @@ from enum import Enum
 
 
 
-syntax = "-m for mode :  must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR, NewLeafClient, or NewLeafTLS\r\n"
+syntax = "-m for mode :  must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR, NewLeafClient, NewSubCaClientAuth, or NewLeafTLS\r\n"
 syntax += "-s for signer. This will be the CN of the signer\r\n"
 syntax += "-n for the subject Name. This will be the CN of the new item. Could be a TLS cert or CA\r\n"
 syntax += "-h for help\r\n"
@@ -45,6 +45,7 @@ class Mode(Enum):
     CreateCaCSR = 7
     CreateTlsCsr = 8
     NewLeafClient = 9
+    NewSubCaClientAuth = 10
 
 class CommonDateTimes(Enum):
     janOf2018 = datetime.datetime(2018, 1,1)
@@ -251,6 +252,89 @@ def createNewSubCA(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
+def createNewSubCAClientAuth(subjectShortName: str, 
+                    issuerShortName: str, 
+                    basePath: Path,
+                    subjectPassphrase = None, 
+                    issuerPassphrase = None,
+                    keysize = 4096,
+                    validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
+                    validTo: datetime = CommonDateTimes.dtPlusTwentyYears,
+                    pathLen = None,
+                    hashAlgo = hashes.SHA256(),
+                    isAcA: bool = True
+                    ):
+    
+    if subjectPassphrase != None:
+        subjectPassphrase = (subjectPassphrase)
+
+    #create the folder for the sub
+    thePath = (Path( basePath)) / subjectShortName
+    if os.path.isdir(thePath):
+        print("{} already exists. Change the name or remove it and try again".format(thePath))
+        sys.exit()
+    else:
+        os.mkdir(thePath)
+
+    #create key and key file
+    thisOneKey = newRSAKeyPair(keysize)
+    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    
+    #we have key and folder create CSR and sign. CSR only, signed to RAM, not disk
+    theCsrWeNeed = createNewCsrSubjectAndSignOnly(thisOneKey, subjectShortName, hashAlgo)
+
+    issCert = readCertFile(((Path( basePath)) / issuerShortName) / "cert.pem")
+    issCaKey = readPemPrivateKeyFromFile(((Path( basePath)) / issuerShortName) / "key.pem", issuerPassphrase)
+    subCertFileName = thePath / "cert.pem"
+
+    #look for AIA and CDP files in the issuer folder
+    aias = list()
+    if os.path.isfile((((Path( basePath)) / issuerShortName) / "aia.txt")):
+        f = open((((Path( basePath)) / issuerShortName) / "aia.txt"), "r")
+        
+        for m in f:
+            aias.append(x509.AccessDescription(x509.ObjectIdentifier("1.3.6.1.5.5.7.48.2"), x509.UniformResourceIdentifier( m)))
+        f.close()
+       
+    cdps = list()
+    if os.path.isfile((((Path( basePath)) / issuerShortName) / "cdp.txt")):
+        f = open((((Path( basePath)) / issuerShortName) / "cdp.txt"), "r")
+        
+        for m in f:
+            cdps.append(x509.DistributionPoint(full_name=  [x509.UniformResourceIdentifier(m)], relative_name = None, reasons = None, crl_issuer = None))
+        f.close()
+
+    theSubCACert = signSubCaCsrWithCaKeyClientAuth(theCsrWeNeed, 
+                                        issCert,  
+                                        issCaKey , 
+                                        cdps, 
+                                        aias , 
+                                        validFrom.value,
+                                        validTo.value,
+                                        pathLen,
+                                        hashAlgo,
+                                        isAcA)
+    # Write our certificate out to disk.
+    with open(subCertFileName, "wb") as f:
+        f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
+
+    #also do a fun named cer verions
+    fileName = getFileNameFromCert(theSubCACert)
+    with open(thePath / fileName, "wb") as f:
+        f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
+
+    #as needed add the issuer issued folder and add the cert to that folder
+    issued = ((Path( localPath)) / issuerShortName) / "issued"
+    if os.path.isdir(issued):
+        pass
+    else:
+        os.mkdir(issued)
+    
+    with open(issued / fileName, "wb") as f:
+        f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
+
+
+
 
 def createNewCsrSubjectAndSignOnly(privKeyIn, 
                                     cnIn, 
@@ -290,6 +374,52 @@ def getFileNameFromCert(certIn : cryptography.x509):
     
     return cnPart
  
+
+def signSubCaCsrWithCaKeyClientAuth(csrIn: x509.CertificateSigningRequest, 
+                        issuerCert: x509.Certificate, 
+                        caKeyIn, 
+                        cdpList = list(), 
+                        aiaList = list(), 
+                        validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
+                        validTo: datetime = CommonDateTimes.dtPlusTenYears,
+                        pathLen = None ,
+                        hashAlgo = hashes.SHA256(),
+                        isAcA: bool = True
+                        ):
+    
+    #we need the CA priv Key,  CA cert to get issuer info, and the CSR
+    cert = x509.CertificateBuilder().subject_name(
+     csrIn.subject
+    ).issuer_name(
+     issuerCert.subject
+    ).public_key(
+     csrIn.public_key()
+    ).serial_number(
+     x509.random_serial_number()
+    ).not_valid_before(
+     validFrom
+    ).not_valid_after(
+     validTo
+    )
+
+    #base cert ready
+
+    #add CRPs and AIAs as needed
+    if len( aiaList) > 0:
+        cert = cert.add_extension(x509.AuthorityInformationAccess(aiaList), critical = False)
+
+    if len( cdpList) > 0:
+        cert = cert.add_extension(x509.CRLDistributionPoints(cdpList), critical = False)
+
+    cert = cert.add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False )     
+
+    #sign with right path Length
+    cert = cert.add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True )
+    cert = cert.sign(caKeyIn, hashAlgo, default_backend())
+    return cert
+
+
+
 def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest, 
                         issuerCert: x509.Certificate, 
                         caKeyIn, 
@@ -1640,6 +1770,9 @@ def main(argv):
             elif arg == Mode.NewLeafClient.name:
                 currentMode =  Mode.CreateTlsCsr
 
+            elif arg == Mode.NewSubCaClientAuth.name:
+                currentMode =  Mode.NewSubCaClientAuth
+
             else:
                 print("Your mode must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR,  or NewLeafTLS")
                 print(syntax)
@@ -1784,9 +1917,10 @@ def main(argv):
 
     #testing region begin
 
-    aBunchOfTests = """
+    
+    #aBunchOfTests = """
     createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018, CommonDateTimes.janOf2048, 2)
-
+    createNewSubCAClientAuth("cliAuthCA", "bob", basepath, None, None, 4096, CommonDateTimes.janOf2018, CommonDateTimes.janOf2048, 2, hash, True )
     tlsCSR = createNewTlsCsrFile("www.fattire.com", basepath, None, keysize, hash)
     signCsrNoQuestionsTlsServer(tlsCSR, "bob", basepath, None, None, CommonDateTimes.dtMinusTenMin , CommonDateTimes.dtPlusTenMin, hash, False, False)
 
@@ -1805,7 +1939,7 @@ def main(argv):
     createNewTlsCertNoEKUs("www.cats.com", "fred", basepath, None, None, 1024, CommonDateTimes.dtMinusTenMin , CommonDateTimes.dtPlusTenMin, hashes.MD5())
 
     createNewClientCert("bobs client", "fred", localPath, None, None, 2048, CommonDateTimes.dtMinusTenMin , CommonDateTimes.dtPlusTenMin, hash)    
-    """
+    #"""
     #testing region end
 
 
@@ -1879,7 +2013,6 @@ def main(argv):
             print("Signed CSR {}\n\r".format(csrFile))
             sys.exit()
             
-
     if currentMode == Mode.SignCRL:
         if  signerCN == "blank":  
             print("Your -s or --signer must be set")  
@@ -1936,6 +2069,17 @@ def main(argv):
             sys.exit()
         else:
             createNewClientCert(subjectCN, signerCN, basepath, None, None, pathlength, keysize, vFrom, vTo, hash, isItaCA)
+            sys.exit()
+
+    if currentMode == Mode.NewSubCaClientAuth:
+        if subjectCN == "blank":
+            print("Your -n or --name must be set")
+            print(syntax)
+            sys.exit()
+        else:
+            if isItaCA == "":
+                isItaCA = True
+            createNewSubCAClientAuth(subjectCN, signerCN, localPath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA )
             sys.exit()
             
     print("Not sure how we got here. I hope you can read and write Python")

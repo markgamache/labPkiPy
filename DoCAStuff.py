@@ -28,12 +28,30 @@ from enum import Enum
 
 
 
-syntax = "-m for mode :  must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR, NewLeafClient, NewSubCaClientAuth, or NewLeafTLS\r\n"
-syntax += "-s for signer. This will be the CN of the signer\r\n"
-syntax += "-n for the subject Name. This will be the CN of the new item. Could be a TLS cert or CA\r\n"
-syntax += "-h for help\r\n"
-syntax += "-c for the path to a CSR file for signing\r\n"
-syntax += "-v for verbose. Sorry not very verbose now\r\n"
+syntax = """
+This tool is for PKI testing and training. It does scary things. BEWARE
+    --name is the CN used in the certificate being created
+    --signer must be the CN of the issuer you are using. 
+    -m or --mode for mode :  must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR, NewLeafClient, NewSubCaClientAuth, or NewLeafTLS
+    --hash it the hashing algo use when signing the cert. SHA1, MD5, SHA512, or SHA256 (def)
+    -h or --help for help
+    -c or --csr for the path to a CSR file for signing
+    -v or --verbose for verbose. Sorry not very verbose now"
+    --validfrom cert start, see dates below
+    --validto cert epxpiry date, see dates below
+    --keysize RSA key size, 1025, 2048, 4096 (will add EC at a later date)
+    --isca true or false. This sets the Basic Constraint (empty chooses the proper value) This is for testing broken things
+    --pathlength the path length the Basic Constraints (def is None) use any int. Just be a CA in --isca to have a length 
+    --noekus this flag means despite being a client or server cert, leave off the EKUs. Used for testing bad TLS stacks
+    --basepath  dir path where the issuer resides and the new cert folder will be created
+    --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks
+
+    Date Time options: janOf2018, janOf2028, janOf2048, dtMinusTenMin, dtMinusOneHour, dtMinusTwoYears, dtPlusTenMin, dtPlusOneYear, dtPlusFiveYears, 
+                       dtPlusTenYears, dtPlusTwentyYears, now
+
+
+"""
+
 
 class Mode(Enum):
     NewRootCA = 1

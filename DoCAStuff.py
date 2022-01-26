@@ -41,7 +41,7 @@ This tool is for PKI testing and training. It does scary things. BEWARE
     --validto cert epxpiry date, see dates below
     --keysize RSA key size, 1025, 2048, 4096 (will add EC at a later date)
     --isca true or false. This sets the Basic Constraint (empty chooses the proper value) This is for testing broken things
-    --pathlength the path length the Basic Constraints (def is None) use any int. Just be a CA in --isca to have a length 
+    --pathlength the path length the Basic Constraints (def is None) use any int. Must be a CA in --isca to have a length 
     --noekus this flag means despite being a client or server cert, leave off the EKUs. Used for testing bad TLS stacks
     --basepath  dir path where the issuer resides and the new cert folder will be created
     --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks

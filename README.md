@@ -7,7 +7,7 @@ The current state is mostly related to positive test cases, however some of the 
 
 *improper path len
 
-*violated name constraints 
+*violated name constraints (not there yet)
 
 *very long path len
 

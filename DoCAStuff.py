@@ -1918,7 +1918,7 @@ def main(argv):
     #testing region begin
 
     
-    #aBunchOfTests = """
+    aBunchOfTests = """
     createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018, CommonDateTimes.janOf2048, 2)
     createNewSubCAClientAuth("cliAuthCA", "bob", basepath, None, None, 4096, CommonDateTimes.janOf2018, CommonDateTimes.janOf2048, 2, hash, True )
     tlsCSR = createNewTlsCsrFile("www.fattire.com", basepath, None, keysize, hash)
@@ -1939,7 +1939,7 @@ def main(argv):
     createNewTlsCertNoEKUs("www.cats.com", "fred", basepath, None, None, 1024, CommonDateTimes.dtMinusTenMin , CommonDateTimes.dtPlusTenMin, hashes.MD5())
 
     createNewClientCert("bobs client", "fred", localPath, None, None, 2048, CommonDateTimes.dtMinusTenMin , CommonDateTimes.dtPlusTenMin, hash)    
-    #"""
+    """
     #testing region end
 
 

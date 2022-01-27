@@ -25,6 +25,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 from cryptography.x509.oid import ExtensionOID
 from enum import Enum
+import json
+from mock import Mock
 
 
 
@@ -46,7 +48,7 @@ This tool is for PKI testing and training. It does scary things. BEWARE
     --basepath  dir path where the issuer resides and the new cert folder will be created
     --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks
 
-    Date Time options: janOf2018, janOf2028, janOf2048, dtMinusTenMin, dtMinusOneHour, dtMinusTwoYears, dtPlusTenMin, dtPlusOneYear, dtPlusFiveYears, 
+    Date Time options: janOf2018, marchOf2018, janOf2028, janOf2048, dtMinusTenMin, dtMinusOneHour, dtMinusTwoYears, dtPlusTenMin, dtPlusOneYear, dtPlusFiveYears, 
                        dtPlusTenYears, dtPlusTwentyYears, now
 
 
@@ -67,6 +69,7 @@ class Mode(Enum):
 
 class CommonDateTimes(Enum):
     janOf2018 = datetime.datetime(2018, 1,1)
+    marchOf2018 = datetime.datetime(2018, 3,1)
     janOf2028 = datetime.datetime(2028, 1,1)
     janOf2048 = datetime.datetime(2048, 1,1)
     dtMinusTenMin = datetime.datetime.utcnow() - datetime.timedelta(seconds=600)
@@ -84,6 +87,9 @@ class CommonTimeSpans(Enum):
     tsTenMin = datetime.timedelta(minutes=10)
     tsOneHour = datetime.timedelta(minutes=60)
 
+class x509Out(dict):
+    def __init__(self, basePath, serial, subject):
+        dict.__init__(self, basePath=basePath, serial=serial, subject=subject)
 
 def newRSAKeyPair(size = 2048):
     key = rsa.generate_private_key(
@@ -125,12 +131,12 @@ def readPemPrivateKeyFromFile(fileIn, passphrase = None):
 def createNewRootCaCert(cnIn: str, 
                         keyIn, 
                         certFileName: Path,
-                        validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                        validTo: datetime = CommonDateTimes.dtPlusTwentyYears,
+                        validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                        validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                         pathLen = None,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True
-                        ):
+                        ) -> x509.Certificate:
 
     subject = issuer = x509.Name([
      x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
@@ -149,9 +155,9 @@ def createNewRootCaCert(cnIn: str,
     ).serial_number(
      x509.random_serial_number()
     ).not_valid_before(
-     validFrom.value
+     validFrom
     ).not_valid_after(
-     validTo.value
+     validTo
     ).add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True).sign(keyIn, hashAlgo, default_backend())
     # Write our certificate out to disk.
     with open(certFileName, "wb") as f:
@@ -168,8 +174,8 @@ def createNewRootCA(shortName: str,
                     basePath: Path, 
                     passphrase = None,
                     keysize = 4096,
-                    validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                    validTo: datetime = CommonDateTimes.dtPlusTwentyYears,
+                    validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                    validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True
@@ -187,7 +193,10 @@ def createNewRootCA(shortName: str,
     keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
     theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA)
-    return theRoot
+    
+    certOut = x509Out(str( thePath),str( theRoot.serial_number), str( theRoot.subject))
+    jOut = json.dumps(certOut)
+    return jOut
 
 def createNewSubCA(subjectShortName: str, 
                     issuerShortName: str, 
@@ -195,8 +204,8 @@ def createNewSubCA(subjectShortName: str,
                     subjectPassphrase = None, 
                     issuerPassphrase = None,
                     keysize = 4096,
-                    validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                    validTo: datetime = CommonDateTimes.dtPlusTwentyYears,
+                    validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                    validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True
@@ -230,7 +239,8 @@ def createNewSubCA(subjectShortName: str,
         f = open((((Path( basePath)) / issuerShortName) / "aia.txt"), "r")
         
         for m in f:
-            aias.append(x509.AccessDescription(x509.ObjectIdentifier("1.3.6.1.5.5.7.48.2"), x509.UniformResourceIdentifier( m)))
+            theURI = x509.UniformResourceIdentifier( m.strip())
+            aias.append(x509.AccessDescription(x509.ObjectIdentifier("1.3.6.1.5.5.7.48.2"), theURI))
         f.close()
        
     cdps = list()
@@ -246,8 +256,8 @@ def createNewSubCA(subjectShortName: str,
                                         issCaKey , 
                                         cdps, 
                                         aias , 
-                                        validFrom.value,
-                                        validTo.value,
+                                        validFrom,
+                                        validTo,
                                         pathLen,
                                         hashAlgo,
                                         isAcA)
@@ -261,7 +271,7 @@ def createNewSubCA(subjectShortName: str,
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
     #as needed add the issuer issued folder and add the cert to that folder
-    issued = ((Path( localPath)) / issuerShortName) / "issued"
+    issued = ((Path( basePath)) / issuerShortName) / "issued"
     if os.path.isdir(issued):
         pass
     else:
@@ -270,14 +280,18 @@ def createNewSubCA(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
+    certOut = x509Out(str( thePath),str( theSubCACert.serial_number), str( theSubCACert.subject))
+    jOut = json.dumps(certOut)
+    return jOut
+
 def createNewSubCAClientAuth(subjectShortName: str, 
                     issuerShortName: str, 
                     basePath: Path,
                     subjectPassphrase = None, 
                     issuerPassphrase = None,
                     keysize = 4096,
-                    validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                    validTo: datetime = CommonDateTimes.dtPlusTwentyYears,
+                    validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                    validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True
@@ -327,8 +341,8 @@ def createNewSubCAClientAuth(subjectShortName: str,
                                         issCaKey , 
                                         cdps, 
                                         aias , 
-                                        validFrom.value,
-                                        validTo.value,
+                                        validFrom,
+                                        validTo,
                                         pathLen,
                                         hashAlgo,
                                         isAcA)
@@ -342,7 +356,7 @@ def createNewSubCAClientAuth(subjectShortName: str,
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
     #as needed add the issuer issued folder and add the cert to that folder
-    issued = ((Path( localPath)) / issuerShortName) / "issued"
+    issued = ((Path( basePath)) / issuerShortName) / "issued"
     if os.path.isdir(issued):
         pass
     else:
@@ -351,7 +365,9 @@ def createNewSubCAClientAuth(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
-
+    certOut = x509Out(str( thePath),str( theSubCACert.serial_number), str( theSubCACert.subject))
+    jOut = json.dumps(certOut)
+    return jOut
 
 
 def createNewCsrSubjectAndSignOnly(privKeyIn, 
@@ -398,12 +414,12 @@ def signSubCaCsrWithCaKeyClientAuth(csrIn: x509.CertificateSigningRequest,
                         caKeyIn, 
                         cdpList = list(), 
                         aiaList = list(), 
-                        validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                        validTo: datetime = CommonDateTimes.dtPlusTenYears,
+                        validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                        validTo: datetime = CommonDateTimes.dtPlusTenYears.value,
                         pathLen = None ,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True
-                        ):
+                        ) -> x509.Certificate:
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
     cert = x509.CertificateBuilder().subject_name(
@@ -443,8 +459,8 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
                         caKeyIn, 
                         cdpList = list(), 
                         aiaList = list(), 
-                        validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                        validTo: datetime = CommonDateTimes.dtPlusTenYears,
+                        validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                        validTo: datetime = CommonDateTimes.dtPlusTenYears.value,
                         pathLen = None ,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True
@@ -460,10 +476,12 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
     ).serial_number(
      x509.random_serial_number()
     ).not_valid_before(
-     validFrom.value
+     validFrom
     ).not_valid_after(
-     validTo.value
+     validTo
     )
+
+    #if need be strip the date.value upstream.
 
     #base cert ready
 
@@ -530,12 +548,12 @@ def signTlsCsrWithCaKey(csrIn,
                         caKeyIn, 
                         cdpList = list(), 
                         aiaList = list(), 
-                        validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                        validTo: datetime = CommonDateTimes.dtPlusOneYear,
+                        validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                        validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                         hashAlgo = hashes.SHA256(),
                         addSANs: bool = True,
-                        isAcA: bool = True
-                        ):
+                        isAcA: bool = False
+                        ) -> x509.Certificate:
     
     hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -548,10 +566,10 @@ def signTlsCsrWithCaKey(csrIn,
     ).serial_number(
      x509.random_serial_number()
     ).not_valid_before(
-     validFrom.value
+     validFrom
     ).not_valid_after(
      # Our certificate will be valid for 52 weeks
-     validTo.value
+     validTo
     ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True 
     ) 
 
@@ -569,7 +587,7 @@ def signTlsCsrWithCaKey(csrIn,
 
 
     #sign with right path Length
-    cert = cert.add_extension(x509.BasicConstraints(ca= False, path_length= None), critical = True )
+    cert = cert.add_extension(x509.BasicConstraints(ca= isAcA, path_length= None), critical = True )
 
     cert = cert.sign(caKeyIn, hashAlgo, default_backend())
 
@@ -580,10 +598,10 @@ def signClientCsrWithCaKey(csrIn,
                         caKeyIn, 
                         cdpList = list(), 
                         aiaList = list(), 
-                        validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                        validTo: datetime = CommonDateTimes.dtPlusOneYear,
+                        validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                        validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                         hashAlgo = hashes.SHA256()
-                        ):
+                        ) -> x509.Certificate:
     
     hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -596,10 +614,10 @@ def signClientCsrWithCaKey(csrIn,
     ).serial_number(
      x509.random_serial_number()
     ).not_valid_before(
-     validFrom.value
+     validFrom
     ).not_valid_after(
      # Our certificate will be valid for 52 weeks
-     validTo.value
+     validTo
     ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.CLIENT_AUTH]), critical=True 
     ).add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False  )
     
@@ -612,10 +630,8 @@ def signClientCsrWithCaKey(csrIn,
     if len( cdpList) > 0:
         cert = cert.add_extension(x509.CRLDistributionPoints(cdpList), critical = False)
 
-
     #sign with right path Length
     cert = cert.add_extension(x509.BasicConstraints(ca= False, path_length= None), critical = True )
-
     cert = cert.sign(caKeyIn, hashAlgo, default_backend())
 
     return cert
@@ -687,8 +703,8 @@ def createNewTlsCert(subjectShortName: str,
                     subjectPassphrase = None, 
                     issuerPassphrase = None,
                     keysize = 2048,
-                    validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                    validTo: datetime = CommonDateTimes.dtPlusOneYear,
+                    validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                    validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                     hashAlgo = hashes.SHA256(),
                     addSANs: bool = True,
                     isAcA: bool = False
@@ -746,7 +762,7 @@ def createNewTlsCert(subjectShortName: str,
     
     
     #as needed add the issuer issued folder and add the cert to that folder
-    issued = ((Path( localPath)) / issuerShortName) / "issued"
+    issued = ((Path( basePath)) / issuerShortName) / "issued"
     if os.path.isdir(issued):
         pass
     else:
@@ -755,7 +771,11 @@ def createNewTlsCert(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theTlsCert.public_bytes(serialization.Encoding.DER))
     
-    buildChain(theTlsCert, subjectShortName)
+    buildChain(theTlsCert, subjectShortName, basePath)
+
+    certOut = x509Out(str( thePath),str( theTlsCert.serial_number), str( theTlsCert.subject))
+    jOut = json.dumps(certOut)
+    return jOut
 
 def createNewTlsCertNoEKUs(subjectShortName: str, 
                     issuerShortName: str,
@@ -840,8 +860,8 @@ def createNewClientCert(subjectShortName: str,
                     issuerPassphrase = None,
                     pathLen = None,
                     keysize = 2048,
-                    validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                    validTo: datetime = CommonDateTimes.dtPlusOneYear,
+                    validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                    validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                     hashAlgo: HashAlgorithm = hashes.SHA256(),
                     isAcA: bool = True
                     ):
@@ -909,6 +929,12 @@ def createNewClientCert(subjectShortName: str,
     
     buildChain(theTlsCert, subjectShortName)
 
+    certOut = x509Out(str( thePath),str( theTlsCert.serial_number), str( theTlsCert.subject))
+    jOut = json.dumps(certOut)
+    return jOut
+
+    
+
 
 def createNewTlsCSR(subjectShortName: str, subjectPassphrase = None):
     
@@ -965,8 +991,8 @@ def createNewTlsCSR(subjectShortName: str, subjectPassphrase = None):
 def createCRL( issuerShortName: str,  
                 basePath: Path,
                 issuerPassphrase = None,
-                validFrom: datetime = CommonDateTimes.dtMinusTenMin , 
-                validTo: datetime = CommonDateTimes.dtPlusOneYear ,
+                validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
+                validTo: datetime = CommonDateTimes.dtPlusOneYear.value ,
                 hashAlgo = hashes.SHA256()               
                 ):
 
@@ -984,13 +1010,14 @@ def createCRL( issuerShortName: str,
                 #they came in as hex assumed. Most UIs show them hex and not big int
                 serials.append("0x{}".format(ii)) 
     else:
-        print("{} does not exist in your CA folder.  It should be a txt file full of serial numbers".format(revFile))
-        print("Creating an empty CRL to publish")
+        #print("{} does not exist in your CA folder.  It should be a txt file full of serial numbers".format(revFile))
+        #print("Creating an empty CRL to publish")
+        pass
 
     builder = x509.CertificateRevocationListBuilder()
     builder = builder.issuer_name(issCert.subject)
-    builder = builder.last_update(validFrom.value)
-    builder = builder.next_update(validTo.value)
+    builder = builder.last_update(validFrom)
+    builder = builder.next_update(validTo)
     
     for s in serials:
         revoked_cert = x509.RevokedCertificateBuilder().serial_number(int( s, 16)).revocation_date(
@@ -1000,9 +1027,7 @@ def createCRL( issuerShortName: str,
 
     crl = builder.sign(issCaKey, algorithm = hashAlgo)
 
-
     crlFileName = ((Path( basePath)) / issuerShortName) / "filePEM.crl"
-
 
     with open(crlFileName, "wb") as f:
         f.write(crl.public_bytes(serialization.Encoding.PEM))
@@ -1012,7 +1037,10 @@ def createCRL( issuerShortName: str,
     with open(crlFileName, "wb") as f:
         f.write(crl.public_bytes(serialization.Encoding.DER))
 
-
+    certOut = x509Out(str( crlFileName),str( str(crl.fingerprint)), str( crl.issuer))
+    jOut = json.dumps(certOut)
+    return jOut
+    
 
 def createNewTlsCsrFile(subjectShortName: str, 
                         basePath: Path,
@@ -1271,6 +1299,7 @@ def screen(data : str):
     """
     If verbose, print to screen
     """
+    global verbose
     if verbose:
         print(data)
 
@@ -1369,7 +1398,7 @@ def printCertList(certList : list()):
     for cer in certList:
         print(cer.subject.rfc4514_string())
 
-def createOrderedCertChain(certs : list) -> list:
+def createOrderedCertChain(certs : list, basePath: Path) -> list:
     """
     Takes in a cert or list of certs. Finds the entity cert to start the chain. Then builds the chain, first from cacerts list, if applicable.
     Then trying AIA, and finally the Mozilla root list as needed.
@@ -1406,10 +1435,8 @@ def createOrderedCertChain(certs : list) -> list:
     #the found leaf is the child for now
     child = entityCert
     while(True):
-
-
-        global folderCerts
-        parent = findParentCertInList(child, folderCerts)
+        
+        parent = findParentCertInList(child, loadCertsFromFolder(basePath))
         if parent == False:
             #todo: incomplete chain need to use AIA to get parent  
             parent = getIssuerFromAIA(child)
@@ -1497,20 +1524,20 @@ def analyzeChainFile(certList : list):
                 
         i+=1
 
-def buildChain(certIn, shortName):
+def buildChain(certIn: x509.Certificate, shortName, basePath: Path):
     try:
-        global folderCerts
-        folderCerts = loadCertsFromFolder(localPath)
+        
+        folderCerts = loadCertsFromFolder(basePath)
         theList = list()
         theList.append(certIn)
-        orderedCerts = createOrderedCertChain(theList)
+        orderedCerts = createOrderedCertChain(theList, basePath)
 
         if(len(orderedCerts) > 1):
             del orderedCerts[0]
 
         strOfPEMs = certListToCaTopDownPEM(orderedCerts)
 
-        outFile = (localPath / shortName) / "chain.pem"
+        outFile = (basePath / shortName) / "chain.pem"
             
         if os.path.isfile(outFile):
             os.remove(outFile)
@@ -1667,7 +1694,7 @@ def signCsrNoQuestionsSubCA(csrFile:Path(),
 
 
 
-        theCaCertBack = signSubCaCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, pathLen, hashAlgo, isAcA)
+        theCaCertBack = signSubCaCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom.value, validTo.value, pathLen, hashAlgo, isAcA)
         #theCaCertBack =  signTlsCsrWithCaKeyNoAddSan(theCsrWeNeed, issCert, issCaKey)
         # Write our certificate out to disk.
         with open(subCertFileName, "wb") as f:
@@ -1812,7 +1839,7 @@ def main(argv):
 
         elif opt == "--basepath":
             if os.path.isdir(arg):
-                basepath = arg
+                basepath = Path( arg )
             else:
                 print("Your base path is not a directory. Try again or leave it blank for the current dir")
                 print(syntax)
@@ -1826,18 +1853,18 @@ def main(argv):
                 pathlength = lenVal
             except:
                 print("Your pathlength should be None or an integer. It was not. we are using None")
-            pathlength = None
 
         elif opt == "-h" or opt == "--help":
             print(syntax)
             sys.exit()
 
         elif opt == "--keysize":
-            if arg == "1024":
+            #print("{} {}".format(keysize , type(keysize)))
+            if arg == "1024" or arg == 1024:
                 keysize = 1024
-            elif arg == "4096":
+            elif arg == "4096" or arg == 4096:
                 keysize = 4096
-            elif keysize == "2048":
+            elif arg == "2048" or arg == 2048:
                 keysize = 2048
             else:
                 print("Your keysize is goofy. Choosing 2048 for you. Options are 1024, 2048, and 4096")
@@ -1846,58 +1873,62 @@ def main(argv):
         elif opt == "--validfrom":
             global vFrom
             if arg == "janOf2018":
-                vFrom = CommonDateTimes.janOf2018
+                vFrom = CommonDateTimes.janOf2018.value
             elif arg == "janOf2028":
-                vFrom = CommonDateTimes.janOf2028
+                vFrom = CommonDateTimes.janOf2028.value
             elif arg == "janOf2048":
-                vFrom = CommonDateTimes.janOf2048
+                vFrom = CommonDateTimes.janOf2048.value
             elif arg == "dtMinusTenMin":
-                vFrom = CommonDateTimes.dtMinusTenMin
+                vFrom = CommonDateTimes.dtMinusTenMin.value
             elif arg == "dtMinusOneHour":
-                vFrom = CommonDateTimes.dtMinusOneHour
+                vFrom = CommonDateTimes.dtMinusOneHour.value
             elif arg == "dtMinusTwoYears":
-                vFrom = CommonDateTimes.dtMinusTwoYears
+                vFrom = CommonDateTimes.dtMinusTwoYears.value
             elif arg == "dtPlusTenMin":
-                vFrom = CommonDateTimes.dtPlusTenMin
+                vFrom = CommonDateTimes.dtPlusTenMin.value
             elif arg == "dtPlusOneYear":
-                vFrom = CommonDateTimes.dtPlusOneYear
+                vFrom = CommonDateTimes.dtPlusOneYear.value
             elif arg == "dtPlusFiveYears":
-                vFrom = CommonDateTimes.dtPlusFiveYears
+                vFrom = CommonDateTimes.dtPlusFiveYears.value
             elif arg == "dtPlusTenYears":
-                vFrom = CommonDateTimes.dtPlusTenYears
+                vFrom = CommonDateTimes.dtPlusTenYears.value
             elif arg == "dtPlusTwentyYears":
-                vFrom = CommonDateTimes.dtPlusTwentyYears
+                vFrom = CommonDateTimes.dtPlusTwentyYears.value
             elif arg == "now":
-                vFrom = CommonDateTimes.now
+                vFrom = CommonDateTimes.now.value
+            elif arg == "marchOf2018":
+                vFrom = CommonDateTimes.marchOf2018.value
             else:
                 pass
         
-        elif opt == "-validto":
+        elif opt == "--validto":
             global vTo
             if arg == "janOf2018":
-                vTo = CommonDateTimes.janOf2018
+                vTo = CommonDateTimes.janOf2018.value
             elif arg == "janOf2028":
-                vTo = CommonDateTimes.janOf2028
+                vTo = CommonDateTimes.janOf2028.value
             elif arg == "janOf2048":
-                vTo = CommonDateTimes.janOf2048
+                vTo = CommonDateTimes.janOf2048.value
             elif arg == "dtMinusTenMin":
-                vTo = CommonDateTimes.dtMinusTenMin
+                vTo = CommonDateTimes.dtMinusTenMin.value
             elif arg == "dtMinusOneHour":
-                vTo = CommonDateTimes.dtMinusOneHour
+                vTo = CommonDateTimes.dtMinusOneHour.value
             elif arg == "dtMinusTwoYears":
-                vTo = CommonDateTimes.dtMinusTwoYears
+                vTo = CommonDateTimes.dtMinusTwoYears.value
             elif arg == "dtPlusTenMin":
-                vTo = CommonDateTimes.dtPlusTenMin
+                vTo = CommonDateTimes.dtPlusTenMin.value
             elif arg == "dtPlusOneYear":
-                vTo = CommonDateTimes.dtPlusOneYear
+                vTo = CommonDateTimes.dtPlusOneYear.value
             elif arg == "dtPlusFiveYears":
-                vTo = CommonDateTimes.dtPlusFiveYears
+                vTo = CommonDateTimes.dtPlusFiveYears.value
             elif arg == "dtPlusTenYears":
-                vTo = CommonDateTimes.dtPlusTenYears
+                vTo = CommonDateTimes.dtPlusTenYears.value
             elif arg == "dtPlusTwentyYears":
-                vTo = CommonDateTimes.dtPlusTwentyYears
+                vTo = CommonDateTimes.dtPlusTwentyYears.value
             elif arg == "now":
-                vTo = CommonDateTimes.now
+                vTo = CommonDateTimes.now.value
+            elif arg == "marchOf2018":
+                vTo = CommonDateTimes.marchOf2018.value
             else:
                 pass    
 
@@ -1912,7 +1943,7 @@ def main(argv):
             global csrFile
             csrFile = arg
 
-        elif opt == "-v":
+        elif opt == "-v" or opt == "--verbose":
             verbose = True
 
         elif opt == "--hash":
@@ -1934,10 +1965,11 @@ def main(argv):
         basepath = localPath           
 
     #testing region begin
-
     
+
     aBunchOfTests = """
-    createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018, CommonDateTimes.janOf2048, 2)
+    www = createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2)
+    
     createNewSubCAClientAuth("cliAuthCA", "bob", basepath, None, None, 4096, CommonDateTimes.janOf2018, CommonDateTimes.janOf2048, 2, hash, True )
     tlsCSR = createNewTlsCsrFile("www.fattire.com", basepath, None, keysize, hash)
     signCsrNoQuestionsTlsServer(tlsCSR, "bob", basepath, None, None, CommonDateTimes.dtMinusTenMin , CommonDateTimes.dtPlusTenMin, hash, False, False)
@@ -1978,8 +2010,10 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            createNewRootCA(subjectCN, basepath, None, None, keysize, vFrom, vTo, hash, isItaCA)
-            print("Created Root CA {}\n\r".format(subjectCN))
+            #print("About to make Root CA {} in {} keysize {} of type {}".format(subjectCN, basepath, keysize, type(keysize)))
+            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA)
+            
+            print(certbk)
             sys.exit()
         
     if currentMode ==  Mode.NewSubCA:
@@ -1990,8 +2024,8 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            createNewSubCA(subjectCN, signerCN, localPath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA )
-            print("Created sub CA {}\n\r".format(subjectCN))
+            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA )
+            print(certbk)
             sys.exit()
 
     if currentMode == Mode.NewLeafTLS:
@@ -2002,8 +2036,8 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = False
-            createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, nosans, isItaCA)
-            print("Created TLS cert for {}\n\r".format(subjectCN))
+            certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, nosans, isItaCA)
+            print(certbk)
             sys.exit()
 
     if currentMode == Mode.NewTlsFromCSR:
@@ -2037,8 +2071,8 @@ def main(argv):
             print(syntax)
             sys.exit()
         else:
-            createCRL(signerCN, basepath, None, vFrom, vTo, hash)
-            print("Created and signed CRL for  {}\n\r".format(signerCN))
+            crlBack = createCRL(signerCN, basepath, None, vFrom, vTo, hash)
+            print(crlBack)
             sys.exit()
 
     if currentMode == Mode.NewSubCaFromCSR:
@@ -2086,7 +2120,8 @@ def main(argv):
             print(syntax)
             sys.exit()
         else:
-            createNewClientCert(subjectCN, signerCN, basepath, None, None, pathlength, keysize, vFrom, vTo, hash, isItaCA)
+            cliback = createNewClientCert(subjectCN, signerCN, basepath, None, None, pathlength, keysize, vFrom, vTo, hash, isItaCA)
+            print(cliback)
             sys.exit()
 
     if currentMode == Mode.NewSubCaClientAuth:
@@ -2097,7 +2132,8 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            createNewSubCAClientAuth(subjectCN, signerCN, localPath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA )
+            caBack = createNewSubCAClientAuth(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA )
+            print(caBack)
             sys.exit()
             
     print("Not sure how we got here. I hope you can read and write Python")

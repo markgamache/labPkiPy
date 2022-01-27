@@ -91,7 +91,7 @@ class x509Out(dict):
     def __init__(self, basePath, serial, subject):
         dict.__init__(self, basePath=basePath, serial=serial, subject=subject)
 
-def newRSAKeyPair(size = 2048):
+def newRSAKeyPair(size: int = 2048):
     key = rsa.generate_private_key(
     public_exponent=65537,
     key_size=size,
@@ -100,7 +100,11 @@ def newRSAKeyPair(size = 2048):
     return key
 
 def keyToPemFile(keyIn, fileName, passphrase):
-    
+
+    if os.path.isfile(fileName):
+        keyB = readPemPrivateKeyFromFile(fileName, passphrase)    
+        return keyB
+
     if passphrase != None:
         with open(fileName, "wb") as f:
             f.write(keyIn.private_bytes(
@@ -115,6 +119,8 @@ def keyToPemFile(keyIn, fileName, passphrase):
             format=serialization.PrivateFormat.TraditionalOpenSSL,
             encryption_algorithm=serialization.NoEncryption()),
             )
+
+    return keyIn
 
 def readPemPrivateKeyFromFile(fileIn, passphrase = None):
     if os.path.isfile:
@@ -186,11 +192,14 @@ def createNewRootCA(shortName: str,
 
     #create the folder
     thePath = (Path( basePath)) / shortName
-    os.mkdir(thePath)
+    try:
+        os.mkdir(thePath)
+    except:
+        pass
 
     #create key and key file
     thisOneKey = newRSAKeyPair(keysize)
-    keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
     theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA)
     
@@ -224,7 +233,7 @@ def createNewSubCA(subjectShortName: str,
 
     #create key and key file
     thisOneKey = newRSAKeyPair(keysize)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign. CSR only, signed to RAM, not disk
     theCsrWeNeed = createNewCsrSubjectAndSignOnly(thisOneKey, subjectShortName, hashAlgo)
@@ -310,7 +319,7 @@ def createNewSubCAClientAuth(subjectShortName: str,
 
     #create key and key file
     thisOneKey = newRSAKeyPair(keysize)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign. CSR only, signed to RAM, not disk
     theCsrWeNeed = createNewCsrSubjectAndSignOnly(thisOneKey, subjectShortName, hashAlgo)
@@ -723,7 +732,7 @@ def createNewTlsCert(subjectShortName: str,
 
     #create key and key file
     thisOneKey = newRSAKeyPair(keysize)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
     theCsrWeNeed = createNewCsrSubjectAndSignOnly(thisOneKey, subjectShortName, hashAlgo)
@@ -801,7 +810,7 @@ def createNewTlsCertNoEKUs(subjectShortName: str,
 
     #create key and key file
     thisOneKey = newRSAKeyPair(keysize)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
     theCsrWeNeed = createNewCsrSubjectAndSignOnly(thisOneKey, subjectShortName, hashAlgo)
@@ -879,7 +888,7 @@ def createNewClientCert(subjectShortName: str,
 
     #create key and key file
     thisOneKey = newRSAKeyPair(keysize)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
     theCsrWeNeed = createNewCsrSubjectAndSignOnly(thisOneKey, subjectShortName, hashAlgo)
@@ -936,7 +945,7 @@ def createNewClientCert(subjectShortName: str,
     
 
 
-def createNewTlsCSR(subjectShortName: str, subjectPassphrase = None):
+def createNewTlsCSR(subjectShortName: str, subjectPassphrase = None, keysize: int = 2048):
     
     if subjectPassphrase != None:
         subjectPassphrase = (subjectPassphrase)
@@ -950,8 +959,8 @@ def createNewTlsCSR(subjectShortName: str, subjectPassphrase = None):
         os.mkdir(thePath)
 
     #create key and key file
-    thisOneKey = newRSAKeyPair(2048)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = newRSAKeyPair(keysize)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
     theCsrWeNeed = createNewCsrSubjectAndSignOnly(thisOneKey, subjectShortName)
@@ -1045,7 +1054,7 @@ def createCRL( issuerShortName: str,
 def createNewTlsCsrFile(subjectShortName: str, 
                         basePath: Path,
                         subjectPassphrase = None,
-                        keysize = 4096,
+                        keysize = 2048,
                         hashAlgo = hashes.SHA256()
 
 ):
@@ -1058,8 +1067,8 @@ def createNewTlsCsrFile(subjectShortName: str,
     os.mkdir(thePath)
 
     #create key and key file
-    thisOneKey = newRSAKeyPair(2048)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = newRSAKeyPair(keysize)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
     theCsrWeNeed = createNewCsrObjTLS(thisOneKey, subjectShortName)
@@ -1089,8 +1098,8 @@ def createNewCaCsrFile(subjectShortName: str,
     os.mkdir(thePath)
 
     #create key and key file
-    thisOneKey = newRSAKeyPair(2048)
-    keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
+    thisOneKey = newRSAKeyPair(keysize)
+    thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
 
@@ -2012,7 +2021,6 @@ def main(argv):
                 isItaCA = True
             #print("About to make Root CA {} in {} keysize {} of type {}".format(subjectCN, basepath, keysize, type(keysize)))
             certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA)
-            
             print(certbk)
             sys.exit()
         

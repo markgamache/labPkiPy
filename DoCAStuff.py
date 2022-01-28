@@ -68,10 +68,10 @@ class Mode(Enum):
     NewSubCaClientAuth = 10
 
 class CommonDateTimes(Enum):
-    janOf2018 = datetime.datetime(2018, 1,1)
-    marchOf2018 = datetime.datetime(2018, 3,1)
-    janOf2028 = datetime.datetime(2028, 1,1)
-    janOf2048 = datetime.datetime(2048, 1,1)
+    janOf2018 = datetime.datetime(2018, 1,2)
+    marchOf2018 = datetime.datetime(2018, 3,2)
+    janOf2028 = datetime.datetime(2028, 1,2)
+    janOf2048 = datetime.datetime(2048, 1,2)
     dtMinusTenMin = datetime.datetime.utcnow() - datetime.timedelta(seconds=600)
     dtMinusOneHour = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
     dtMinusTwoYears = datetime.datetime.utcnow() - datetime.timedelta(weeks=104)
@@ -203,7 +203,7 @@ def createNewRootCA(shortName: str,
 
     theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA)
     
-    certOut = x509Out(str( thePath),str( theRoot.serial_number), str( theRoot.subject))
+    certOut = x509Out(str( thePath), hex( theRoot.serial_number)[2:], str( theRoot.subject))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -226,8 +226,7 @@ def createNewSubCA(subjectShortName: str,
     #create the folder for the sub
     thePath = (Path( basePath)) / subjectShortName
     if os.path.isdir(thePath):
-        print("{} already exists. Change the name or remove it and try again".format(thePath))
-        sys.exit()
+        pass
     else:
         os.mkdir(thePath)
 
@@ -289,7 +288,7 @@ def createNewSubCA(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
-    certOut = x509Out(str( thePath),str( theSubCACert.serial_number), str( theSubCACert.subject))
+    certOut = x509Out(str( thePath), hex( theSubCACert.serial_number)[2:], str( theSubCACert.subject))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -374,7 +373,7 @@ def createNewSubCAClientAuth(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
-    certOut = x509Out(str( thePath),str( theSubCACert.serial_number), str( theSubCACert.subject))
+    certOut = x509Out(str( thePath), hex( theSubCACert.serial_number)[2:], str( theSubCACert.subject))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -782,7 +781,7 @@ def createNewTlsCert(subjectShortName: str,
     
     buildChain(theTlsCert, subjectShortName, basePath)
 
-    certOut = x509Out(str( thePath),str( theTlsCert.serial_number), str( theTlsCert.subject))
+    certOut = x509Out(str( thePath), hex( theTlsCert.serial_number)[2:], str( theTlsCert.subject))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -938,7 +937,7 @@ def createNewClientCert(subjectShortName: str,
     
     buildChain(theTlsCert, subjectShortName)
 
-    certOut = x509Out(str( thePath),str( theTlsCert.serial_number), str( theTlsCert.subject))
+    certOut = x509Out(str( thePath), hex( theTlsCert.serial_number)[2:], str( theTlsCert.subject))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -1535,11 +1534,23 @@ def analyzeChainFile(certList : list):
 
 def buildChain(certIn: x509.Certificate, shortName, basePath: Path):
     try:
-        
         folderCerts = loadCertsFromFolder(basePath)
         theList = list()
         theList.append(certIn)
         orderedCerts = createOrderedCertChain(theList, basePath)
+
+        #cert with chain
+        strOfPEMs = certListToCaTopDownPEM(orderedCerts)
+
+        outFile = (basePath / shortName) / "certwithchain.pem"
+            
+        if os.path.isfile(outFile):
+            os.remove(outFile)
+        wFile = open(outFile, "w")
+        wFile.write(strOfPEMs)
+        wFile.close()
+
+        #just chian.
 
         if(len(orderedCerts) > 1):
             del orderedCerts[0]

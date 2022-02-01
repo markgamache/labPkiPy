@@ -141,7 +141,8 @@ def createNewRootCaCert(cnIn: str,
                         validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                         pathLen = None,
                         hashAlgo = hashes.SHA256(),
-                        isAcA: bool = True
+                        isAcA: bool = True,
+                        allowedNames: list = list()
                         ) -> x509.Certificate:
 
     subject = issuer = x509.Name([
@@ -164,7 +165,16 @@ def createNewRootCaCert(cnIn: str,
      validFrom
     ).not_valid_after(
      validTo
-    ).add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True).sign(keyIn, hashAlgo, default_backend())
+    ).add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True)
+
+    if len(allowedNames) > 0:
+        ncList = list()
+        for nm in allowedNames:
+            ncList.append(x509.DNSName(nm))
+
+        cert = cert.add_extension( x509.NameConstraints(ncList, None), critical = True)
+
+    cert =  cert.sign(keyIn, hashAlgo, default_backend())
     # Write our certificate out to disk.
     with open(certFileName, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
@@ -184,7 +194,8 @@ def createNewRootCA(shortName: str,
                     validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
-                    isAcA: bool = True
+                    isAcA: bool = True,
+                    allowedNames: list = list()
                     ):
     
     if passphrase != None:
@@ -201,7 +212,7 @@ def createNewRootCA(shortName: str,
     thisOneKey = newRSAKeyPair(keysize)
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
-    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA)
+    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames)
     
     certOut = x509Out(str( thePath), hex( theRoot.serial_number)[2:], str( theRoot.subject))
     jOut = json.dumps(certOut)
@@ -217,7 +228,8 @@ def createNewSubCA(subjectShortName: str,
                     validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
-                    isAcA: bool = True
+                    isAcA: bool = True,
+                    allowedNames: list = list()
                     ):
     
     if subjectPassphrase != None:
@@ -268,7 +280,8 @@ def createNewSubCA(subjectShortName: str,
                                         validTo,
                                         pathLen,
                                         hashAlgo,
-                                        isAcA)
+                                        isAcA,
+                                        allowedNames)
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
@@ -471,7 +484,8 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
                         validTo: datetime = CommonDateTimes.dtPlusTenYears.value,
                         pathLen = None ,
                         hashAlgo = hashes.SHA256(),
-                        isAcA: bool = True
+                        isAcA: bool = True,
+                        allowedNames: list = list()
                         ):
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -499,8 +513,14 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
 
     if len( cdpList) > 0:
         cert = cert.add_extension(x509.CRLDistributionPoints(cdpList), critical = False)
+        
+    if len(allowedNames) > 0:
+        ncList = list()
+        for nm in allowedNames:
+            ncList.append(x509.DNSName(nm))
 
-    
+        cert = cert.add_extension( x509.NameConstraints(ncList, None), critical = True)
+
     #sign with right path Length
     cert = cert.add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True )
     cert = cert.sign(caKeyIn, hashAlgo, default_backend())
@@ -1735,6 +1755,7 @@ def main(argv):
     noEKUs = False
     basepath = ""
     addSans = True
+    allowedNames = list()
 
     try:
         opts, args = getopt.getopt(argv,"hm:n:vs:c:", ["mode=", 
@@ -1751,7 +1772,8 @@ def main(argv):
                                                         "pathlength=", 
                                                         "noekus",
                                                         "basepath=",
-                                                        "nosans"])
+                                                        "nosans",
+                                                        "ncallowed="])
     except getopt.GetoptError as optFail:
         print(optFail.msg)
         print(syntax )
@@ -1818,6 +1840,11 @@ def main(argv):
         elif opt == "--noekus":
              noEKUs = True
 
+        elif opt == "--ncallowed":
+             nameses = arg.split(",")
+             for nm in nameses:
+                allowedNames.append(nm)
+                
         elif opt == "--nosans":
              addSans = False
 
@@ -1950,8 +1977,12 @@ def main(argv):
 
     #testing region begin
     
+    createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"])
+    createNewSubCA("fred", "bob", basepath, None, None, 2048, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 1, hashes.SHA256(), True, list())
+    createNewTlsCert("walter.pkilab.markgamache.com", "fred", basepath, None, None, 2048, CommonDateTimes.dtMinusTenMin.value , CommonDateTimes.dtPlusTenMin.value)
 
     aBunchOfTests = """
+
     www = createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2)
     
     createNewSubCAClientAuth("cliAuthCA", "bob", basepath, None, None, 4096, CommonDateTimes.janOf2018, CommonDateTimes.janOf2048, 2, hash, True )
@@ -1995,7 +2026,7 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = True
             #print("About to make Root CA {} in {} keysize {} of type {}".format(subjectCN, basepath, keysize, type(keysize)))
-            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA)
+            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames)
             print(certbk)
             sys.exit()
         
@@ -2007,7 +2038,7 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA )
+            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA , allowedNames)
             print(certbk)
             sys.exit()
 

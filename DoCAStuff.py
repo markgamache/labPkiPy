@@ -47,6 +47,8 @@ This tool is for PKI testing and training. It does scary things. BEWARE
     --noekus this flag means despite being a client or server cert, leave off the EKUs. Used for testing bad TLS stacks
     --basepath  dir path where the issuer resides and the new cert folder will be created
     --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks
+    --ncallowed  string of DNS names, comma seperated, to be added to the names allowed name constraint 
+    --disncallowed string of DNS names, comma seperated, to be added to the names disallowed name constraint
 
     Date Time options: janOf2018, marchOf2018, janOf2028, janOf2048, dtMinusTenMin, dtMinusOneHour, dtMinusTwoYears, dtPlusTenMin, dtPlusOneYear, dtPlusFiveYears, 
                        dtPlusTenYears, dtPlusTwentyYears, now
@@ -142,7 +144,8 @@ def createNewRootCaCert(cnIn: str,
                         pathLen = None,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True,
-                        allowedNames: list = list()
+                        allowedNames: list = list(),
+                        disallowedNames: list = list()
                         ) -> x509.Certificate:
 
     subject = issuer = x509.Name([
@@ -167,12 +170,20 @@ def createNewRootCaCert(cnIn: str,
      validTo
     ).add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True)
 
-    if len(allowedNames) > 0:
-        ncList = list()
-        for nm in allowedNames:
-            ncList.append(x509.DNSName(nm))
+    ncListAllow = list()   
+    ncListDisAllow = list()    
 
-        cert = cert.add_extension( x509.NameConstraints(ncList, None), critical = True)
+    if len(allowedNames) > 0:
+        for nm in allowedNames:
+            ncListAllow.append(x509.DNSName(nm))
+
+    if len(disallowedNames) > 0:
+        for nm in disallowedNames:
+            ncListDisAllow.append(x509.DNSName(nm))
+
+    if len(allowedNames) + len(disallowedNames) > 0:
+        cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
+
 
     cert =  cert.sign(keyIn, hashAlgo, default_backend())
     # Write our certificate out to disk.
@@ -195,7 +206,8 @@ def createNewRootCA(shortName: str,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True,
-                    allowedNames: list = list()
+                    allowedNames: list = list(),
+                    disallowedNames: list = list()
                     ):
     
     if passphrase != None:
@@ -212,7 +224,7 @@ def createNewRootCA(shortName: str,
     thisOneKey = newRSAKeyPair(keysize)
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
-    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames)
+    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames, disallowedNames)
     
     certOut = x509Out(str( thePath), hex( theRoot.serial_number)[2:], str( theRoot.subject))
     jOut = json.dumps(certOut)
@@ -229,7 +241,8 @@ def createNewSubCA(subjectShortName: str,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True,
-                    allowedNames: list = list()
+                    allowedNames: list = list(),
+                    disallowedNames: list = list()
                     ):
     
     if subjectPassphrase != None:
@@ -281,7 +294,8 @@ def createNewSubCA(subjectShortName: str,
                                         pathLen,
                                         hashAlgo,
                                         isAcA,
-                                        allowedNames)
+                                        allowedNames,
+                                        disallowedNames)
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
@@ -485,7 +499,8 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
                         pathLen = None ,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True,
-                        allowedNames: list = list()
+                        allowedNames: list = list(),
+                        disallowedNames: list = list()
                         ):
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -513,13 +528,21 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
 
     if len( cdpList) > 0:
         cert = cert.add_extension(x509.CRLDistributionPoints(cdpList), critical = False)
-        
-    if len(allowedNames) > 0:
-        ncList = list()
-        for nm in allowedNames:
-            ncList.append(x509.DNSName(nm))
+     
+   
+    ncListAllow = list()   
+    ncListDisAllow = list()    
 
-        cert = cert.add_extension( x509.NameConstraints(ncList, None), critical = True)
+    if len(allowedNames) > 0:
+        for nm in allowedNames:
+            ncListAllow.append(x509.DNSName(nm))
+
+    if len(disallowedNames) > 0:
+        for nm in disallowedNames:
+            ncListDisAllow.append(x509.DNSName(nm))
+
+    if len(allowedNames) + len(disallowedNames) > 0:
+        cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
 
     #sign with right path Length
     cert = cert.add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True )
@@ -1756,6 +1779,7 @@ def main(argv):
     basepath = ""
     addSans = True
     allowedNames = list()
+    disallowedNames = list()
 
     try:
         opts, args = getopt.getopt(argv,"hm:n:vs:c:", ["mode=", 
@@ -1773,7 +1797,8 @@ def main(argv):
                                                         "noekus",
                                                         "basepath=",
                                                         "nosans",
-                                                        "ncallowed="])
+                                                        "ncallowed=",
+                                                        "ncdisallowed="])
     except getopt.GetoptError as optFail:
         print(optFail.msg)
         print(syntax )
@@ -1845,6 +1870,11 @@ def main(argv):
              for nm in nameses:
                 allowedNames.append(nm)
                 
+        elif opt == "--ncdisallowed":
+             nameses = arg.split(",")
+             for nm in nameses:
+                disallowedNames.append(nm)
+
         elif opt == "--nosans":
              addSans = False
 
@@ -1977,11 +2007,12 @@ def main(argv):
 
     #testing region begin
     
-    createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"])
+    
+    aBunchOfTests = """
+
+    createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])
     createNewSubCA("fred", "bob", basepath, None, None, 2048, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 1, hashes.SHA256(), True, list())
     createNewTlsCert("walter.pkilab.markgamache.com", "fred", basepath, None, None, 2048, CommonDateTimes.dtMinusTenMin.value , CommonDateTimes.dtPlusTenMin.value)
-
-    aBunchOfTests = """
 
     www = createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2)
     
@@ -2026,7 +2057,7 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = True
             #print("About to make Root CA {} in {} keysize {} of type {}".format(subjectCN, basepath, keysize, type(keysize)))
-            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames)
+            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames, disallowedNames)
             print(certbk)
             sys.exit()
         
@@ -2038,7 +2069,7 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA , allowedNames)
+            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA , allowedNames, disallowedNames)
             print(certbk)
             sys.exit()
 

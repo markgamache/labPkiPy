@@ -48,7 +48,7 @@ This tool is for PKI testing and training. It does scary things. BEWARE
     --basepath  dir path where the issuer resides and the new cert folder will be created
     --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks
     --ncallowed  string of DNS names, comma seperated, to be added to the names allowed name constraint 
-    --disncallowed string of DNS names, comma seperated, to be added to the names disallowed name constraint
+    --ncdisallowed string of DNS names, comma seperated, to be added to the names disallowed name constraint
 
     Date Time options: janOf2018, marchOf2018, janOf2028, janOf2048, dtMinusTenMin, dtMinusOneHour, dtMinusTwoYears, dtPlusTenMin, dtPlusOneYear, dtPlusFiveYears, 
                        dtPlusTenYears, dtPlusTwentyYears, now

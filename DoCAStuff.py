@@ -1182,7 +1182,7 @@ def loadCertsFromFolder(folderName : Path) -> list:
         for file in f:
             fullName = Path(r) / file
 
-            if fullName.suffix.lower() not in [".pem",".crt",".cer"]:
+            if fullName.suffix.lower() not in [".pem",".crt"]:
                 continue
             
             if fullName.parts[-1] == "key.pem":

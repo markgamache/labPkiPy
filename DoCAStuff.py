@@ -1180,13 +1180,19 @@ def loadCertsFromFolder(folderName : Path) -> list:
     for r, d, f in os.walk(folderName, topdown=False):
         #print(r)
         for file in f:
+            theRes = None
             fullName = Path(r) / file
 
-            if fullName.suffix.lower() not in [".pem",".crt"]:
+            if fullName.suffix.lower() != ".pem":
                 continue
             
             if fullName.parts[-1] == "key.pem":
                 continue
+
+            if fullName.parts[-1] == "certwithchain.pem":
+                continue
+            #todo.  need to not read other chain files
+            
             #do work
             theRes = (readCertFileListBack(fullName)[0])
             if theRes != None:
@@ -2007,7 +2013,7 @@ def main(argv):
 
     #testing region begin
     
-    
+  
     aBunchOfTests = """
 
     createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])

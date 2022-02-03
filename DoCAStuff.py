@@ -90,8 +90,8 @@ class CommonTimeSpans(Enum):
     tsOneHour = datetime.timedelta(minutes=60)
 
 class x509Out(dict):
-    def __init__(self, basePath, serial, subject):
-        dict.__init__(self, basePath=basePath, serial=serial, subject=subject)
+    def __init__(self, basePath, serial, subject, derfile):
+        dict.__init__(self, basePath=basePath, serial=serial, subject=subject, DERFile=derfile)
 
 def newRSAKeyPair(size: int = 2048):
     key = rsa.generate_private_key(
@@ -225,8 +225,10 @@ def createNewRootCA(shortName: str,
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
     theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames, disallowedNames)
-    
-    certOut = x509Out(str( thePath), hex( theRoot.serial_number)[2:], str( theRoot.subject))
+
+    derFilename = getFileNameFromCert(theRoot)    
+
+    certOut = x509Out(str( thePath), hex( theRoot.serial_number)[2:], str( theRoot.subject), str(thePath / derFilename))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -315,7 +317,8 @@ def createNewSubCA(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
-    certOut = x509Out(str( thePath), hex( theSubCACert.serial_number)[2:], str( theSubCACert.subject))
+    derFilename = getFileNameFromCert(theSubCACert)    
+    certOut = x509Out(str( thePath), hex( theSubCACert.serial_number)[2:], str( theSubCACert.subject), str(thePath / derFilename))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -400,7 +403,9 @@ def createNewSubCAClientAuth(subjectShortName: str,
     with open(issued / fileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.DER))
 
-    certOut = x509Out(str( thePath), hex( theSubCACert.serial_number)[2:], str( theSubCACert.subject))
+    derFilename = getFileNameFromCert(theSubCACert)
+
+    certOut = x509Out(str( thePath), hex( theSubCACert.serial_number)[2:], str( theSubCACert.subject), str(thePath / derFilename))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -829,7 +834,9 @@ def createNewTlsCert(subjectShortName: str,
     
     buildChain(theTlsCert, subjectShortName, basePath)
 
-    certOut = x509Out(str( thePath), hex( theTlsCert.serial_number)[2:], str( theTlsCert.subject))
+    derFilename = getFileNameFromCert(theTlsCert)    
+
+    certOut = x509Out(str( thePath), hex( theTlsCert.serial_number)[2:], str( theTlsCert.subject), str(thePath / derFilename))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -983,7 +990,8 @@ def createNewClientCert(subjectShortName: str,
     
     buildChain(theTlsCert, subjectShortName, basePath)
 
-    certOut = x509Out(str( thePath), hex( theTlsCert.serial_number)[2:], str( theTlsCert.subject))
+    derFilename = getFileNameFromCert(theTlsCert)    
+    certOut = x509Out(str( thePath), hex( theTlsCert.serial_number)[2:], str( theTlsCert.subject), str(thePath / derFilename))
     jOut = json.dumps(certOut)
     return jOut
 
@@ -1089,7 +1097,7 @@ def createCRL( issuerShortName: str,
     with open(crlFileName, "wb") as f:
         f.write(crl.public_bytes(serialization.Encoding.DER))
 
-    certOut = x509Out(str( crlFileName),str( str(crl.fingerprint)), str( crl.issuer))
+    certOut = x509Out(str( crlFileName),str( str(crl.fingerprint)), str( crl.issuer), "")
     jOut = json.dumps(certOut)
     return jOut
     
@@ -2013,6 +2021,7 @@ def main(argv):
 
     #testing region begin
     
+    #dfd = createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])
   
     aBunchOfTests = """
 

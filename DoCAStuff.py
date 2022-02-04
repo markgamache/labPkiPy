@@ -644,7 +644,11 @@ def signTlsCsrWithCaKey(csrIn,
     if len( cdpList) > 0:
         cert = cert.add_extension(x509.CRLDistributionPoints(cdpList), critical = False)
 
-
+    cspP = createCPSPols(cert)
+    pcS = x509.PolicyConstraints(1, None)
+    thePols = x509.CertificatePolicies(cspP)
+    cert = cert.add_extension(thePols, False)
+    
     #sign with right path Length
     cert = cert.add_extension(x509.BasicConstraints(ca= isAcA, path_length= None), critical = True )
 
@@ -1760,6 +1764,15 @@ def signCsrNoQuestionsSubCA(csrFile:Path(),
         buildChain(theCaCertBack, subjectShortName)
 
 
+def createCPSPols(preSignedData: cryptography.x509.base.CertificateBuilder):
+    cpsoid = x509.ObjectIdentifier(x509.oid.CertificatePoliciesOID.CPS_QUALIFIER.dotted_string)
+    qualifiers = []
+    qualifiers.append("http://cps.pkilab.markgamache.com/")
+    pinfo = x509.PolicyInformation(cpsoid, qualifiers)
+        
+    return [pinfo]
+
+
 #end fucntions
 
 global currentMode
@@ -2020,9 +2033,7 @@ def main(argv):
         basepath = localPath           
 
     #testing region begin
-    
-    #dfd = createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])
-  
+       
     aBunchOfTests = """
 
     createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])

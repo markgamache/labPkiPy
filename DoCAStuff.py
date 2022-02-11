@@ -2034,9 +2034,7 @@ def main(argv):
 
     #testing region begin
     
-    createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])
-    createNewSubCA("fred", "bob", basepath, None, None, 2048, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 1, hashes.SHA256(), True, list())
-    createNewTlsCert("walter.pkilab.markgamache.com", "fred", basepath, None, None, 2048, CommonDateTimes.dtMinusTenMin.value , CommonDateTimes.dtPlusTenMin.value, hashes.MD5())   
+        
     aBunchOfTests = """
 
     createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])

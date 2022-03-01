@@ -185,7 +185,9 @@ def createNewRootCaCert(cnIn: str,
         for nm in disallowedNames:
             ncListDisAllow.append(x509.DNSName(nm))
     
-    if ncListDisAllow != None or ncListAllow != None:
+    if ncListDisAllow == None and ncListAllow == None:
+        pass
+    else:
         cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
 
 
@@ -554,7 +556,9 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
         for nm in disallowedNames:
             ncListDisAllow.append(x509.DNSName(nm))
     
-    if ncListDisAllow != None or ncListAllow != None:
+    if ncListDisAllow == None and ncListAllow == None:
+        pass
+    else:
         cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
 
 

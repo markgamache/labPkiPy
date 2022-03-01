@@ -173,15 +173,19 @@ def createNewRootCaCert(cnIn: str,
     ncListAllow = list()   
     ncListDisAllow = list()    
 
-    if len(allowedNames) > 0:
+    if allowedNames == None:
+        ncListAllow = None
+    elif len(allowedNames) > 0:
         for nm in allowedNames:
             ncListAllow.append(x509.DNSName(nm))
-
-    if len(disallowedNames) > 0:
+        
+    if disallowedNames == None:
+        ncListDisAllow = None
+    elif len(disallowedNames) > 0:
         for nm in disallowedNames:
             ncListDisAllow.append(x509.DNSName(nm))
-
-    if len(allowedNames) + len(disallowedNames) > 0:
+    
+    if ncListDisAllow != None or ncListAllow != None:
         cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
 
 
@@ -538,16 +542,22 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
     ncListAllow = list()   
     ncListDisAllow = list()    
 
-    if len(allowedNames) > 0:
+    if allowedNames == None:
+        ncListAllow = None
+    elif len(allowedNames) > 0:
         for nm in allowedNames:
             ncListAllow.append(x509.DNSName(nm))
-
-    if len(disallowedNames) > 0:
+        
+    if disallowedNames == None:
+        ncListDisAllow = None
+    elif len(disallowedNames) > 0:
         for nm in disallowedNames:
             ncListDisAllow.append(x509.DNSName(nm))
-
-    if len(allowedNames) + len(disallowedNames) > 0:
+    
+    if ncListDisAllow != None or ncListAllow != None:
         cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
+
+
 
     #sign with right path Length
     cert = cert.add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True )
@@ -2033,7 +2043,7 @@ def main(argv):
         basepath = localPath           
 
     #testing region begin
-    
+    createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], None)
         
     aBunchOfTests = """
 

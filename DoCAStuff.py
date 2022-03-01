@@ -212,8 +212,8 @@ def createNewRootCA(shortName: str,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True,
-                    allowedNames: list = list(),
-                    disallowedNames: list = list()
+                    allowedNames: list = None,
+                    disallowedNames: list = None
                     ):
     
     if passphrase != None:
@@ -249,8 +249,8 @@ def createNewSubCA(subjectShortName: str,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True,
-                    allowedNames: list = list(),
-                    disallowedNames: list = list()
+                    allowedNames: list = None,
+                    disallowedNames: list = None
                     ):
     
     if subjectPassphrase != None:
@@ -328,6 +328,7 @@ def createNewSubCA(subjectShortName: str,
     jOut = json.dumps(certOut)
     return jOut
 
+#does not currently support NCs for this
 def createNewSubCAClientAuth(subjectShortName: str, 
                     issuerShortName: str, 
                     basePath: Path,

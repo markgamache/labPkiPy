@@ -144,8 +144,8 @@ def createNewRootCaCert(cnIn: str,
                         pathLen = None,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True,
-                        allowedNames: list = list(),
-                        disallowedNames: list = list()
+                        allowedNames: list = None,
+                        disallowedNames: list = None
                         ) -> x509.Certificate:
 
     subject = issuer = x509.Name([
@@ -510,8 +510,8 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
                         pathLen = None ,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True,
-                        allowedNames: list = list(),
-                        disallowedNames: list = list()
+                        allowedNames: list = None,
+                        disallowedNames: list = None
                         ):
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -2047,7 +2047,8 @@ def main(argv):
         basepath = localPath           
 
     #testing region begin
-  
+    
+
     aBunchOfTests = """
 
     createNewRootCA("bob", basepath, None, 4096, CommonDateTimes.janOf2018.value, CommonDateTimes.janOf2048.value, 2, hash, True, ["cats.com", "pkilab.markgamache.com"], ["bofa.com"])

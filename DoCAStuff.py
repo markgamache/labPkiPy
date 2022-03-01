@@ -173,6 +173,14 @@ def createNewRootCaCert(cnIn: str,
     ncListAllow = list()   
     ncListDisAllow = list()    
 
+    if type( allowedNames) == list: 
+        if len(allowedNames) == 0:
+            allowedNames = None
+
+    if type( disallowedNames) == list: 
+        if len(disallowedNames) == 0:
+            disallowedNames = None
+
     if allowedNames == None:
         ncListAllow = None
     elif len(allowedNames) > 0:
@@ -544,6 +552,14 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
    
     ncListAllow = list()   
     ncListDisAllow = list()    
+
+    if type( allowedNames) == list: 
+        if len(allowedNames) == 0:
+            allowedNames = None
+
+    if type( disallowedNames) == list: 
+        if len(disallowedNames) == 0:
+            disallowedNames = None
 
     if allowedNames == None:
         ncListAllow = None

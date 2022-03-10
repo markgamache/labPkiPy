@@ -34,17 +34,51 @@ syntax = """
 This tool is for PKI testing and training. It does scary things. BEWARE
     --name is the CN used in the certificate being created
     --signer must be the CN of the issuer you are using. 
-    -m or --mode for mode :  must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR, NewLeafClient, NewSubCaClientAuth, or NewLeafTLS
+    -m or --mode for mode. must be one of:
+        NewRootCA
+        NewSubCA
+        NewSubCaFromCSR
+        NewTlsFromCSR
+        SignCRL
+        CreateTlsCsr
+        CreateCaCSR
+        NewLeafClient
+        NewSubCaClientAuth
+        NewLeafTLS
+
     --hash it the hashing algo use when signing the cert. SHA1, MD5, SHA512, or SHA256 (def)
     -h or --help for help
     -c or --csr for the path to a CSR file for signing
     -v or --verbose for verbose. Sorry not very verbose now"
     --validfrom cert start, see dates below
     --validto cert epxpiry date, see dates below
-    --keysize RSA key size, 1025, 2048, 4096 (will add EC at a later date)
+    --keysize Just the int 
+        RSA key size, 1024, 2048, 4096 
+        ECC key size 256, 384, 521
     --isca true or false. This sets the Basic Constraint (empty chooses the proper value) This is for testing broken things
     --pathlength the path length the Basic Constraints (def is None) use any int. Must be a CA in --isca to have a length 
-    --noekus this flag means despite being a client or server cert, leave off the EKUs. Used for testing bad TLS stacks
+    --noeku this flag means despite being a client or server cert, leave off the EKUs. Used for testing bad TLS stacks
+    --ekus list of EKUs to include. Comma seperated. Any combination of:
+        SERVER_AUTH
+        CLIENT_AUTH
+        CODE_SIGNING
+        EMAIL_PROTECTION 
+        TIME_STAMPING 
+        OCSP_SIGNING 
+        ANY_EXTENDED_KEY_USAGE
+
+    --noku this is the default. Some stacks may do fun things based on use case an KU
+    --kus list of Key Usage items. Comma seperated. Any combinaiton of:
+        digital_signature
+        content_commitment
+        key_encipherment
+        data_encipherment
+        key_agreement
+        key_cert_sign
+        crl_sign
+        encipher_only
+        decipher_only
+
     --basepath  dir path where the issuer resides and the new cert folder will be created
     --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks
     --ncallowed  string of DNS names, comma seperated, to be added to the names allowed name constraint 
@@ -101,6 +135,20 @@ def newRSAKeyPair(size: int = 2048):
     )
     return key
 
+def newECCKeyPair(size: int = 256):
+
+    curve = ec.SECP256K1()  
+    
+    if size == 384:
+        curve = ec.SECP384R1()
+
+    if size == 521:
+        curve = ec.SECP521R1()
+
+    key = ec.generate_private_key(curve, backend=default_backend())
+    
+    return key
+
 def keyToPemFile(keyIn, fileName, passphrase):
 
     if os.path.isfile(fileName):
@@ -145,7 +193,9 @@ def createNewRootCaCert(cnIn: str,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True,
                         allowedNames: list = None,
-                        disallowedNames: list = None
+                        disallowedNames: list = None,
+                        KUs: list = None,
+                        EKUs: list = None
                         ) -> x509.Certificate:
 
     subject = issuer = x509.Name([
@@ -198,6 +248,86 @@ def createNewRootCaCert(cnIn: str,
     else:
         cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
 
+    #if KUs are present add the ext in accordance
+    if len(KUs) > 0:
+        dSig = False 
+        conCom = False
+        keyEnc = False
+        datEnci = False
+        keyAgr = False
+        keyCeSi = False
+        crlSig = False
+        encOnly = False
+        decOnly = False
+
+        for ku in KUs:
+            if ku == "digital_signature":
+                dSig = True
+
+            if ku == "content_commitment":
+                conCom = True
+
+            if ku == "key_encipherment":
+                keyEnc = True
+
+            if ku == "data_encipherment":
+                datEnci = True
+
+            if ku == "key_agreement":
+                keyAgr = True
+
+            if ku == "key_cert_sign":
+                keyCeSi = True
+    
+            if ku == "crl_sign":
+                crlSig = True
+
+            if ku == "encipher_only":
+                encOnly = True
+
+            if ku == "decipher_only":
+                decOnly = True
+            
+        cert = cert.add_extension(x509.KeyUsage(digital_signature=dSig, 
+                                                content_commitment=conCom, 
+                                                key_encipherment=keyEnc, 
+                                                data_encipherment=datEnci, 
+                                                key_agreement=keyAgr, 
+                                                key_cert_sign=keyCeSi, 
+                                                crl_sign=crlSig, 
+                                                encipher_only=encOnly, 
+                                                decipher_only=decOnly
+                                                ), critical =True)
+
+    #if EKUs are present, add them
+    if len(EKUs) > 0:
+        realEKUList = list()
+
+        for eku in EKUs:
+            if eku == "SERVER_AUTH":
+                realEKUList.append(x509.ExtendedKeyUsageOID.SERVER_AUTH)
+
+            if eku == "CLIENT_AUTH":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CLIENT_AUTH)
+
+            if eku == "CODE_SIGNING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CODE_SIGNING)
+
+            if eku == "EMAIL_PROTECTION":
+                realEKUList.append(x509.ExtendedKeyUsageOID.EMAIL_PROTECTION)
+
+            if eku == "TIME_STAMPING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CLIENT_AUTH)
+
+            if eku == "OCSP_SIGNING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CODE_SIGNING)
+
+            if eku == "ANY_EXTENDED_KEY_USAGE":
+                realEKUList.append(x509.ExtendedKeyUsageOID.EMAIL_PROTECTION)
+
+
+        cert = cert.add_extension(x509.ExtendedKeyUsage(realEKUList), critical=True )
+
 
     cert =  cert.sign(keyIn, hashAlgo, default_backend())
     # Write our certificate out to disk.
@@ -221,7 +351,9 @@ def createNewRootCA(shortName: str,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True,
                     allowedNames: list = None,
-                    disallowedNames: list = None
+                    disallowedNames: list = None,
+                    KUs: list = None,
+                    EKUs: list = None
                     ):
     
     if passphrase != None:
@@ -235,10 +367,14 @@ def createNewRootCA(shortName: str,
         pass
 
     #create key and key file
-    thisOneKey = newRSAKeyPair(keysize)
+    if keysize in ["1024", "2048", "4096"]:
+        thisOneKey = newRSAKeyPair(keysize)
+    else:
+        thisOneKey = newECCKeyPair(keysize)
+
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
-    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames, disallowedNames)
+    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames, disallowedNames, KUs,  EKUs)
 
     derFilename = getFileNameFromCert(theRoot)    
 
@@ -258,7 +394,9 @@ def createNewSubCA(subjectShortName: str,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True,
                     allowedNames: list = None,
-                    disallowedNames: list = None
+                    disallowedNames: list = None,
+                    KUs: list = None,
+                    EKUs: list = None
                     ):
     
     if subjectPassphrase != None:
@@ -272,7 +410,11 @@ def createNewSubCA(subjectShortName: str,
         os.mkdir(thePath)
 
     #create key and key file
-    thisOneKey = newRSAKeyPair(keysize)
+    if keysize in ["1024", "2048", "4096"]:
+        thisOneKey = newRSAKeyPair(keysize)
+    else:
+        thisOneKey = newECCKeyPair(keysize)
+
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign. CSR only, signed to RAM, not disk
@@ -311,7 +453,11 @@ def createNewSubCA(subjectShortName: str,
                                         hashAlgo,
                                         isAcA,
                                         allowedNames,
-                                        disallowedNames)
+                                        disallowedNames,
+                                        KUs,
+                                        EKUs)
+
+
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
@@ -520,7 +666,9 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
                         hashAlgo = hashes.SHA256(),
                         isAcA: bool = True,
                         allowedNames: list = None,
-                        disallowedNames: list = None
+                        disallowedNames: list = None,
+                        KUs: list = None,
+                        EKUs: list = None
                         ):
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -578,6 +726,86 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
     else:
         cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
 
+
+    #if KUs are present add the ext in accordance
+    if len(KUs) > 0:
+        dSig = False 
+        conCom = False
+        keyEnc = False
+        datEnci = False
+        keyAgr = False
+        keyCeSi = False
+        crlSig = False
+        encOnly = False
+        decOnly = False
+
+        for ku in KUs:
+            if ku == "digital_signature":
+                dSig = True
+
+            if ku == "content_commitment":
+                conCom = True
+
+            if ku == "key_encipherment":
+                keyEnc = True
+
+            if ku == "data_encipherment":
+                datEnci = True
+
+            if ku == "key_agreement":
+                keyAgr = True
+
+            if ku == "key_cert_sign":
+                keyCeSi = True
+    
+            if ku == "crl_sign":
+                crlSig = True
+
+            if ku == "encipher_only":
+                encOnly = True
+
+            if ku == "decipher_only":
+                decOnly = True
+            
+        cert = cert.add_extension(x509.KeyUsage(digital_signature=dSig, 
+                                                content_commitment=conCom, 
+                                                key_encipherment=keyEnc, 
+                                                data_encipherment=datEnci, 
+                                                key_agreement=keyAgr, 
+                                                key_cert_sign=keyCeSi, 
+                                                crl_sign=crlSig, 
+                                                encipher_only=encOnly, 
+                                                decipher_only=decOnly
+                                                ), critical =True)
+
+    #if EKUs are present, add them
+    if len(EKUs) > 0:
+        realEKUList = list()
+
+        for eku in EKUs:
+            if eku == "SERVER_AUTH":
+                realEKUList.append(x509.ExtendedKeyUsageOID.SERVER_AUTH)
+
+            if eku == "CLIENT_AUTH":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CLIENT_AUTH)
+
+            if eku == "CODE_SIGNING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CODE_SIGNING)
+
+            if eku == "EMAIL_PROTECTION":
+                realEKUList.append(x509.ExtendedKeyUsageOID.EMAIL_PROTECTION)
+
+            if eku == "TIME_STAMPING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CLIENT_AUTH)
+
+            if eku == "OCSP_SIGNING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CODE_SIGNING)
+
+            if eku == "ANY_EXTENDED_KEY_USAGE":
+                realEKUList.append(x509.ExtendedKeyUsageOID.EMAIL_PROTECTION)
+
+
+        cert = cert.add_extension(x509.ExtendedKeyUsage(realEKUList), critical=True )
 
 
     #sign with right path Length
@@ -640,7 +868,9 @@ def signTlsCsrWithCaKey(csrIn,
                         hashAlgo = hashes.SHA256(),
                         addSANs: bool = True,
                         isAcA: bool = False,
-                        noEkus: bool = False
+                        noEkus: bool = False,
+                        KUs: list = None,
+                        EKUs: list = None
                         ) -> x509.Certificate:
     
     hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
@@ -660,8 +890,8 @@ def signTlsCsrWithCaKey(csrIn,
      validTo
     )
 
-    if noEkus == False:
-        cert = cert.add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True   ) 
+    #if noEkus == False:
+    #    cert = cert.add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True   ) 
 
     if addSANs:
         cert = cert.add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False  )
@@ -682,6 +912,86 @@ def signTlsCsrWithCaKey(csrIn,
     
     #sign with right path Length
     cert = cert.add_extension(x509.BasicConstraints(ca= isAcA, path_length= None), critical = True )
+
+    #if KUs are present add the ext in accordance
+    if len(KUs) > 0:
+        dSig = False 
+        conCom = False
+        keyEnc = False
+        datEnci = False
+        keyAgr = False
+        keyCeSi = False
+        crlSig = False
+        encOnly = False
+        decOnly = False
+
+        for ku in KUs:
+            if ku == "digital_signature":
+                dSig = True
+
+            if ku == "content_commitment":
+                conCom = True
+
+            if ku == "key_encipherment":
+                keyEnc = True
+
+            if ku == "data_encipherment":
+                datEnci = True
+
+            if ku == "key_agreement":
+                keyAgr = True
+
+            if ku == "key_cert_sign":
+                keyCeSi = True
+    
+            if ku == "crl_sign":
+                crlSig = True
+
+            if ku == "encipher_only":
+                encOnly = True
+
+            if ku == "decipher_only":
+                decOnly = True
+            
+        cert = cert.add_extension(x509.KeyUsage(digital_signature=dSig, 
+                                                content_commitment=conCom, 
+                                                key_encipherment=keyEnc, 
+                                                data_encipherment=datEnci, 
+                                                key_agreement=keyAgr, 
+                                                key_cert_sign=keyCeSi, 
+                                                crl_sign=crlSig, 
+                                                encipher_only=encOnly, 
+                                                decipher_only=decOnly
+                                                ), critical =True)
+
+    #if EKUs are present, add them
+    if len(EKUs) > 0:
+        realEKUList = list()
+
+        for eku in EKUs:
+            if eku == "SERVER_AUTH":
+                realEKUList.append(x509.ExtendedKeyUsageOID.SERVER_AUTH)
+
+            if eku == "CLIENT_AUTH":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CLIENT_AUTH)
+
+            if eku == "CODE_SIGNING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CODE_SIGNING)
+
+            if eku == "EMAIL_PROTECTION":
+                realEKUList.append(x509.ExtendedKeyUsageOID.EMAIL_PROTECTION)
+
+            if eku == "TIME_STAMPING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CLIENT_AUTH)
+
+            if eku == "OCSP_SIGNING":
+                realEKUList.append(x509.ExtendedKeyUsageOID.CODE_SIGNING)
+
+            if eku == "ANY_EXTENDED_KEY_USAGE":
+                realEKUList.append(x509.ExtendedKeyUsageOID.EMAIL_PROTECTION)
+
+
+        cert = cert.add_extension(x509.ExtendedKeyUsage(realEKUList), critical=True )
 
     cert = cert.sign(caKeyIn, hashAlgo, default_backend())
 
@@ -805,7 +1115,9 @@ def createNewTlsCert(subjectShortName: str,
                     hashAlgo = hashes.SHA256(),
                     addSANs: bool = True,
                     isAcA: bool = False,
-                    noEkus: bool = False
+                    noEkus: bool = False,
+                    KUs: list = None,
+                    EKUs: list = None
                     ):
     
     if subjectPassphrase != None:
@@ -820,7 +1132,11 @@ def createNewTlsCert(subjectShortName: str,
         os.mkdir(thePath)
 
     #create key and key file
-    thisOneKey = newRSAKeyPair(keysize)
+    if keysize in ["1024", "2048", "4096"]:
+        thisOneKey = newRSAKeyPair(keysize)
+    else:
+        thisOneKey = newECCKeyPair(keysize)
+
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
@@ -847,7 +1163,7 @@ def createNewTlsCert(subjectShortName: str,
             cdps.append(x509.DistributionPoint(full_name=  [x509.UniformResourceIdentifier(m)], relative_name = None, reasons = None, crl_issuer = None))
         f.close()
 
-    theTlsCert = signTlsCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, addSANs, isAcA, noEkus)
+    theTlsCert = signTlsCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, addSANs, isAcA, noEkus, KUs, EKUs)
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
@@ -855,7 +1171,7 @@ def createNewTlsCert(subjectShortName: str,
     #also do a fun named cer verions
     fileName = getFileNameFromCert(theTlsCert)
     with open(thePath / fileName, "wb") as f:
-        f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
+        f.write(theTlsCert.public_bytes(serialization.Encoding.DER))
     
     #as needed add the issuer issued folder and add the cert to that folder
     issued = ((Path( basePath)) / issuerShortName) / "issued"
@@ -1838,6 +2154,10 @@ def main(argv):
     addSans = True
     allowedNames = list()
     disallowedNames = list()
+    noKUs = False
+    KUs =list()
+    EKUs =list()
+
 
     try:
         opts, args = getopt.getopt(argv,"hm:n:vs:c:", ["mode=", 
@@ -1852,7 +2172,10 @@ def main(argv):
                                                         "keysize=", 
                                                         "isca=", 
                                                         "pathlength=", 
-                                                        "noekus",
+                                                        "noeku",
+                                                        "ekus=",
+                                                        "noku",
+                                                        "kus=",
                                                         "basepath=",
                                                         "nosans",
                                                         "ncallowed=",
@@ -1920,8 +2243,61 @@ def main(argv):
             else:
                 print("isca is not right, must be true or false. Useing the RFC defualts")    
 
-        elif opt == "--noekus":
+        elif opt == "--noeku":
              noEKUs = True
+
+        elif opt == "--noku":
+             noKUs = True
+
+        elif opt == "--ekus":
+             #split list
+            ekuTrys = arg.split(",")
+            for tName in ekuTrys:
+                if tName.strip() == "SERVER_AUTH":
+                    EKUs.append(tName.strip())
+                elif tName.strip() == "CLIENT_AUTH":
+                    EKUs.append(tName.strip())  
+                elif tName.strip() == "CODE_SIGNING":
+                    EKUs.append(tName.strip())
+                elif tName.strip() == "EMAIL_PROTECTION":
+                    EKUs.append(tName.strip())
+                elif tName.strip() == "TIME_STAMPING":
+                    EKUs.append(tName.strip())  
+                elif tName.strip() == "OCSP_SIGNING":
+                    EKUs.append(tName.strip())
+                elif tName.strip() == "ANY_EXTENDED_KEY_USAGE":
+                    EKUs.append(tName.strip())
+                else:
+                    print("{} is not a valid EKU".format(tName))
+                    print(syntax )
+                    sys.exit(2)
+  
+        elif opt == "--kus":
+             #split list
+            kuTrys = arg.split(",")
+            for tName in kuTrys:
+                if tName.strip() == "digital_signature":
+                    KUs.append(tName.strip())
+                elif tName.strip() == "content_commitment":
+                    KUs.append(tName.strip())  
+                elif tName.strip() == "key_encipherment":
+                    KUs.append(tName.strip())
+                elif tName.strip() == "data_encipherment":
+                    KUs.append(tName.strip())
+                elif tName.strip() == "key_agreement":
+                    KUs.append(tName.strip())  
+                elif tName.strip() == "key_cert_sign":
+                    KUs.append(tName.strip())
+                elif tName.strip() == "crl_sign":
+                    KUs.append(tName.strip())
+                elif tName.strip() == "encipher_only":
+                    KUs.append(tName.strip())
+                elif tName.strip() == "decipher_only":
+                    KUs.append(tName.strip())
+                else:
+                    print("{} is not a valid Key Usage".format(tName))
+                    print(syntax )
+                    sys.exit(2)
 
         elif opt == "--ncallowed":
              nameses = arg.split(",")
@@ -1942,7 +2318,7 @@ def main(argv):
             else:
                 print("Your base path is not a directory. Try again or leave it blank for the current dir")
                 print(syntax)
-                sys.exit()
+                sys.exit(2)
 
         elif opt == "--pathlength":
             if arg == "None":
@@ -1965,6 +2341,12 @@ def main(argv):
                 keysize = 4096
             elif arg == "2048" or arg == 2048:
                 keysize = 2048
+            elif arg == "256" or arg == 256:
+                keysize = 256
+            elif arg == "384" or arg == 384:
+                keysize = 384
+            elif arg == "521" or arg == 521:
+                keysize = 521
             else:
                 print("Your keysize is goofy. Choosing 2048 for you. Options are 1024, 2048, and 4096")
                 keysize = 2048
@@ -2099,10 +2481,21 @@ def main(argv):
 
     #magic begins here
     
+    #check a couple of possible switch conflicts 
+    if noKUs and len(KUs) > 0:
+        print("You can't set --noku and --kus")
+        print(syntax)
+        sys.exit(2)
+
+    if noEKUs and len(EKUs) > 0:
+        print("You can't set --noeku and --ekus")
+        print(syntax)
+        sys.exit(2)
+
     
     if currentMode == None:
         print("Your -m or --mode must be set")
-        print("Your mode must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR,  or NewLeafTLS")
+        print("Your mode must be NewRootCA, NewSubCA, NewSubCaFromCSR, NewTlsFromCSR, SignCRL, CreateTlsCsr, CreateCaCSR, or NewLeafTLS")
         print(syntax)
         sys.exit()
 
@@ -2115,7 +2508,7 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = True
             #print("About to make Root CA {} in {} keysize {} of type {}".format(subjectCN, basepath, keysize, type(keysize)))
-            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames, disallowedNames)
+            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames, disallowedNames, KUs, EKUs)
             print(certbk)
             sys.exit()
         
@@ -2127,7 +2520,7 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA , allowedNames, disallowedNames)
+            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA , allowedNames, disallowedNames, KUs, EKUs)
             print(certbk)
             sys.exit()
 
@@ -2139,7 +2532,7 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = False
-            certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, addSans, isItaCA, noEKUs)
+            certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, addSans, isItaCA, noEKUs, KUs, EKUs)
             print(certbk)
             sys.exit()
 
@@ -2223,11 +2616,10 @@ def main(argv):
             print(syntax)
             sys.exit()
         else:
-
             if isItaCA == "":
                 isItaCA = False
 
-            cliback = createNewClientCert(subjectCN, signerCN, basepath, None, None, pathlength, keysize, vFrom, vTo, hash, addSans, isItaCA)
+            cliback = createNewClientCert(subjectCN, signerCN, basepath, None, None, pathlength, keysize, vFrom, vTo, hash, addSans, isItaCA, KUs, EKUs)
             print(cliback)
             sys.exit()
 
@@ -2239,7 +2631,7 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            caBack = createNewSubCAClientAuth(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA )
+            caBack = createNewSubCAClientAuth(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames, disallowedNames, KUs, EKUs )
             print(caBack)
             sys.exit()
             

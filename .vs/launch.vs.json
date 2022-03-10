@@ -6,7 +6,7 @@
       "type": "python",
       "interpreter": "(default)",
       "interpreterArguments": "",
-      "scriptArguments": "-m NewSubCaFromCSR -s testRoot -c E:\\source\\labPkiPy\\specSubCa\\file.csr",
+      "scriptArguments": "--mode NewRootCA  --name GamacheTrustRoot2018 --validfrom janOf2018 --validto janOf2048 --keysize 521 --pathlength 2 --basepath c:\\8d12fd70-01ea-4935-bf87-17a69f1b050c --kus digital_signature --ekus CODE_SIGNING",
       "env": {},
       "nativeDebug": false,
       "webBrowserUrl": "",

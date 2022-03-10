@@ -83,6 +83,7 @@ This tool is for PKI testing and training. It does scary things. BEWARE
     --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks
     --ncallowed  string of DNS names, comma seperated, to be added to the names allowed name constraint 
     --ncdisallowed string of DNS names, comma seperated, to be added to the names disallowed name constraint
+    --cps  The URL you want the CPS to point to
 
     Date Time options: janOf2018, marchOf2018, janOf2028, janOf2048, dtMinusTenMin, dtMinusOneHour, dtMinusTwoYears, dtPlusTenMin, dtPlusOneYear, dtPlusFiveYears, 
                        dtPlusTenYears, dtPlusTwentyYears, now
@@ -195,7 +196,8 @@ def createNewRootCaCert(cnIn: str,
                         allowedNames: list = None,
                         disallowedNames: list = None,
                         KUs: list = None,
-                        EKUs: list = None
+                        EKUs: list = None,
+                        cpsURL: str = None
                         ) -> x509.Certificate:
 
     subject = issuer = x509.Name([
@@ -219,6 +221,12 @@ def createNewRootCaCert(cnIn: str,
     ).not_valid_after(
      validTo
     ).add_extension(x509.BasicConstraints(ca= isAcA, path_length= pathLen), critical = True)
+
+    cspP = createCPSPols(cert, cpsURL)
+    pcS = x509.PolicyConstraints(1, None)
+    thePols = x509.CertificatePolicies(cspP)
+    cert = cert.add_extension(thePols, False)
+    
 
     ncListAllow = list()   
     ncListDisAllow = list()    
@@ -353,7 +361,8 @@ def createNewRootCA(shortName: str,
                     allowedNames: list = None,
                     disallowedNames: list = None,
                     KUs: list = None,
-                    EKUs: list = None
+                    EKUs: list = None,
+                    cpsURL: str = None
                     ):
     
     if passphrase != None:
@@ -374,7 +383,7 @@ def createNewRootCA(shortName: str,
 
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", passphrase)
 
-    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames, disallowedNames, KUs,  EKUs)
+    theRoot = createNewRootCaCert(shortName, thisOneKey, thePath / "cert.pem", validFrom, validTo, pathLen , hashAlgo, isAcA, allowedNames, disallowedNames, KUs,  EKUs, cpsURL)
 
     derFilename = getFileNameFromCert(theRoot)    
 
@@ -396,7 +405,8 @@ def createNewSubCA(subjectShortName: str,
                     allowedNames: list = None,
                     disallowedNames: list = None,
                     KUs: list = None,
-                    EKUs: list = None
+                    EKUs: list = None,
+                    cpsURL: str = None
                     ):
     
     if subjectPassphrase != None:
@@ -455,7 +465,8 @@ def createNewSubCA(subjectShortName: str,
                                         allowedNames,
                                         disallowedNames,
                                         KUs,
-                                        EKUs)
+                                        EKUs,
+                                        cpsURL)
 
 
     # Write our certificate out to disk.
@@ -668,7 +679,8 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
                         allowedNames: list = None,
                         disallowedNames: list = None,
                         KUs: list = None,
-                        EKUs: list = None
+                        EKUs: list = None,
+                        cpsURL: str = None
                         ):
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR
@@ -696,7 +708,12 @@ def signSubCaCsrWithCaKey(csrIn: x509.CertificateSigningRequest,
 
     if len( cdpList) > 0:
         cert = cert.add_extension(x509.CRLDistributionPoints(cdpList), critical = False)
-     
+    
+
+    cspP = createCPSPols(cert, cpsURL)
+    pcS = x509.PolicyConstraints(1, None)
+    thePols = x509.CertificatePolicies(cspP)
+    cert = cert.add_extension(thePols, False) 
    
     ncListAllow = list()   
     ncListDisAllow = list()    
@@ -870,7 +887,8 @@ def signTlsCsrWithCaKey(csrIn,
                         isAcA: bool = False,
                         noEkus: bool = False,
                         KUs: list = None,
-                        EKUs: list = None
+                        EKUs: list = None,
+                        cpsURL: str = None
                         ) -> x509.Certificate:
     
     hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
@@ -905,7 +923,7 @@ def signTlsCsrWithCaKey(csrIn,
     if len( cdpList) > 0:
         cert = cert.add_extension(x509.CRLDistributionPoints(cdpList), critical = False)
 
-    cspP = createCPSPols(cert)
+    cspP = createCPSPols(cert, cpsURL)
     pcS = x509.PolicyConstraints(1, None)
     thePols = x509.CertificatePolicies(cspP)
     cert = cert.add_extension(thePols, False)
@@ -1117,7 +1135,8 @@ def createNewTlsCert(subjectShortName: str,
                     isAcA: bool = False,
                     noEkus: bool = False,
                     KUs: list = None,
-                    EKUs: list = None
+                    EKUs: list = None,
+                    cpsURL: str = None
                     ):
     
     if subjectPassphrase != None:
@@ -1163,7 +1182,7 @@ def createNewTlsCert(subjectShortName: str,
             cdps.append(x509.DistributionPoint(full_name=  [x509.UniformResourceIdentifier(m)], relative_name = None, reasons = None, crl_issuer = None))
         f.close()
 
-    theTlsCert = signTlsCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, addSANs, isAcA, noEkus, KUs, EKUs)
+    theTlsCert = signTlsCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, addSANs, isAcA, noEkus, KUs, EKUs, cpsURL)
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
@@ -2111,10 +2130,10 @@ def signCsrNoQuestionsSubCA(csrFile:Path(),
         buildChain(theCaCertBack, subjectShortName)
 
 
-def createCPSPols(preSignedData: cryptography.x509.base.CertificateBuilder):
+def createCPSPols(preSignedData: cryptography.x509.base.CertificateBuilder, theUrl: str = "https://github.com/markgamache/labPkiPy/blob/master/cps.txt"):
     cpsoid = x509.ObjectIdentifier(x509.oid.CertificatePoliciesOID.CPS_QUALIFIER.dotted_string)
     qualifiers = []
-    qualifiers.append("http://cps.pkilab.markgamache.com/")
+    qualifiers.append(theUrl)
     pinfo = x509.PolicyInformation(cpsoid, qualifiers)
         
     return [pinfo]
@@ -2157,6 +2176,7 @@ def main(argv):
     noKUs = False
     KUs =list()
     EKUs =list()
+    cpsURL = "https://github.com/markgamache/labPkiPy/blob/master/cps.txt"
 
 
     try:
@@ -2179,7 +2199,8 @@ def main(argv):
                                                         "basepath=",
                                                         "nosans",
                                                         "ncallowed=",
-                                                        "ncdisallowed="])
+                                                        "ncdisallowed=",
+                                                        "cps="])
     except getopt.GetoptError as optFail:
         print(optFail.msg)
         print(syntax )
@@ -2245,6 +2266,9 @@ def main(argv):
 
         elif opt == "--noeku":
              noEKUs = True
+
+        elif opt == "--cps":
+             cpsURL = arg
 
         elif opt == "--noku":
              noKUs = True
@@ -2508,7 +2532,7 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = True
             #print("About to make Root CA {} in {} keysize {} of type {}".format(subjectCN, basepath, keysize, type(keysize)))
-            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames, disallowedNames, KUs, EKUs)
+            certbk = createNewRootCA(subjectCN, basepath, None, keysize, vFrom, vTo, pathlength, hash, isItaCA, allowedNames, disallowedNames, KUs, EKUs, cpsURL)
             print(certbk)
             sys.exit()
         
@@ -2520,7 +2544,7 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = True
-            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA , allowedNames, disallowedNames, KUs, EKUs)
+            certbk = createNewSubCA(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, pathlength, hash, isItaCA , allowedNames, disallowedNames, KUs, EKUs, cpsURL)
             print(certbk)
             sys.exit()
 
@@ -2532,7 +2556,7 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = False
-            certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, addSans, isItaCA, noEKUs, KUs, EKUs)
+            certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, addSans, isItaCA, noEKUs, KUs, EKUs, cpsURL)
             print(certbk)
             sys.exit()
 

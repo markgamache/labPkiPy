@@ -505,7 +505,9 @@ def createNewSubCAClientAuth(subjectShortName: str,
                     validTo: datetime = CommonDateTimes.dtPlusTwentyYears.value,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
-                    isAcA: bool = True
+                    isAcA: bool = True,
+                    KUs: list = list(), #currently unused 
+                    EKUs: list = list() #currently unused 
                     ):
     
     if subjectPassphrase != None:
@@ -556,7 +558,10 @@ def createNewSubCAClientAuth(subjectShortName: str,
                                         validTo,
                                         pathLen,
                                         hashAlgo,
-                                        isAcA)
+                                        isAcA,
+                                        KUs,
+                                        EKUs)
+
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theSubCACert.public_bytes(serialization.Encoding.PEM))
@@ -635,7 +640,9 @@ def signSubCaCsrWithCaKeyClientAuth(csrIn: x509.CertificateSigningRequest,
                         validTo: datetime = CommonDateTimes.dtPlusTenYears.value,
                         pathLen = None ,
                         hashAlgo = hashes.SHA256(),
-                        isAcA: bool = True
+                        isAcA: bool = True,
+                        KUs: list = list(), #currently unused 
+                        EKUs: list = list() #currently unused 
                         ) -> x509.Certificate:
     
     #we need the CA priv Key,  CA cert to get issuer info, and the CSR

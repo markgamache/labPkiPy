@@ -1028,6 +1028,8 @@ def signClientCsrWithCaKey(csrIn,
                         validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                         hashAlgo = hashes.SHA256(),
                         addSANs: bool = True,
+                        KUs: list = list(), #currently not used
+                        EKUs: list = list() #currently not used
                         ) -> x509.Certificate:
     
     hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
@@ -1045,8 +1047,7 @@ def signClientCsrWithCaKey(csrIn,
     ).not_valid_after(
      # Our certificate will be valid for 52 weeks
      validTo
-    ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.CLIENT_AUTH]), critical=True 
-    )
+    ).add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.CLIENT_AUTH]), critical=True)
 
     if addSANs:
         cert = cert.add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False  )
@@ -1302,7 +1303,9 @@ def createNewClientCert(subjectShortName: str,
                     validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                     hashAlgo: HashAlgorithm = hashes.SHA256(),
                     addSANs: bool = True,
-                    isAcA: bool = True
+                    isAcA: bool = True,
+                    KUs: list = list(), 
+                    EKUs: list = list()
                     ):
     
     if subjectPassphrase != None:
@@ -1343,7 +1346,7 @@ def createNewClientCert(subjectShortName: str,
             cdps.append(x509.DistributionPoint(full_name=  [x509.UniformResourceIdentifier(m)], relative_name = None, reasons = None, crl_issuer = None))
         f.close()
 
-    theTlsCert = signClientCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, addSANs)
+    theTlsCert = signClientCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, addSANs, KUs, EKUs)
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))

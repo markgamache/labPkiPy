@@ -81,6 +81,7 @@ This tool is for PKI testing and training. It does scary things. BEWARE
 
     --basepath  dir path where the issuer resides and the new cert folder will be created
     --nosans  this flag leaves out SANs, so only the CN is present for naming. This is for testing bad TLS stacks
+    --sans Comma seperated. list of DNS names for SANs.  No support as of now, for other types 
     --ncallowed  string of DNS names, comma seperated, to be added to the names allowed name constraint 
     --ncdisallowed string of DNS names, comma seperated, to be added to the names disallowed name constraint
     --cps  The URL you want the CPS to point to
@@ -597,7 +598,8 @@ def createNewCsrSubjectAndSignOnly(privKeyIn,
 
 def createNewCsrObjTLS(privKeyIn, 
                         cnIn,
-                        hashAlgo = hashes.SHA256()
+                        hashAlgo = hashes.SHA256(),
+                        theSans: list = None
                         ):
     thisCsr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
      # Provide various details about who we are.
@@ -605,9 +607,12 @@ def createNewCsrObjTLS(privKeyIn,
      x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"California"),
      x509.NameAttribute(NameOID.LOCALITY_NAME, u"San Francisco"),
      x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"My Company"),
-     x509.NameAttribute(NameOID.COMMON_NAME, cnIn), ])).add_extension(x509.SubjectAlternativeName([x509.DNSName(cnIn)]), critical=False  
-    ).sign(privKeyIn, hashAlgo, default_backend())
+     x509.NameAttribute(NameOID.COMMON_NAME, cnIn), ]))
 
+    if len(theSans) > 0:
+        thisCsr = thisCsr.add_extension(x509.SubjectAlternativeName(theSans), critical=False)
+
+    thisCsr = thisCsr.sign(privKeyIn, hashAlgo, default_backend())
     return thisCsr
 
 
@@ -883,12 +888,13 @@ def signTlsCsrWithCaKey(csrIn,
                         validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
                         validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                         hashAlgo = hashes.SHA256(),
-                        addSANs: bool = True,
+                        noSANs: bool = True,
                         isAcA: bool = False,
                         noEkus: bool = False,
                         KUs: list = None,
                         EKUs: list = None,
-                        cpsURL: str = None
+                        cpsURL: str = None,
+                        theSans: list = None
                         ) -> x509.Certificate:
     
     hostname = csrIn.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
@@ -908,11 +914,9 @@ def signTlsCsrWithCaKey(csrIn,
      validTo
     )
 
-    #if noEkus == False:
-    #    cert = cert.add_extension(x509.ExtendedKeyUsage([x509.ExtendedKeyUsageOID.SERVER_AUTH]), critical=True   ) 
 
-    if addSANs:
-        cert = cert.add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False  )
+    if noSANs == False:
+        cert = cert.add_extension(x509.SubjectAlternativeName(theSans), critical=False  )
     
     #base cert ready
 
@@ -1131,12 +1135,13 @@ def createNewTlsCert(subjectShortName: str,
                     validFrom: datetime = CommonDateTimes.dtMinusTenMin.value , 
                     validTo: datetime = CommonDateTimes.dtPlusOneYear.value,
                     hashAlgo = hashes.SHA256(),
-                    addSANs: bool = True,
+                    noSANs: bool = True,
                     isAcA: bool = False,
                     noEkus: bool = False,
                     KUs: list = None,
                     EKUs: list = None,
-                    cpsURL: str = None
+                    cpsURL: str = None,
+                    theSans: list = None
                     ):
     
     if subjectPassphrase != None:
@@ -1182,7 +1187,7 @@ def createNewTlsCert(subjectShortName: str,
             cdps.append(x509.DistributionPoint(full_name=  [x509.UniformResourceIdentifier(m)], relative_name = None, reasons = None, crl_issuer = None))
         f.close()
 
-    theTlsCert = signTlsCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, addSANs, isAcA, noEkus, KUs, EKUs, cpsURL)
+    theTlsCert = signTlsCsrWithCaKey(theCsrWeNeed, issCert, issCaKey, cdps, aias, validFrom, validTo, hashAlgo, noSANs, isAcA, noEkus, KUs, EKUs, cpsURL, theSans)
     # Write our certificate out to disk.
     with open(subCertFileName, "wb") as f:
         f.write(theTlsCert.public_bytes(serialization.Encoding.PEM))
@@ -1476,9 +1481,9 @@ def createNewTlsCsrFile(subjectShortName: str,
                         basePath: Path,
                         subjectPassphrase = None,
                         keysize = 2048,
-                        hashAlgo = hashes.SHA256()
-
-):
+                        hashAlgo = hashes.SHA256(),
+                        theSans: list = None
+                        ):
     
     if subjectPassphrase != None:
         subjectPassphrase = (subjectPassphrase)
@@ -1488,11 +1493,15 @@ def createNewTlsCsrFile(subjectShortName: str,
     os.mkdir(thePath)
 
     #create key and key file
-    thisOneKey = newRSAKeyPair(keysize)
+    if keysize in ["1024", "2048", "4096"]:
+        thisOneKey = newRSAKeyPair(keysize)
+    else:
+        thisOneKey = newECCKeyPair(keysize)
+
     thisOneKey = keyToPemFile(thisOneKey, thePath / "key.pem", subjectPassphrase)
     
     #we have key and folder create CSR and sign
-    theCsrWeNeed = createNewCsrObjTLS(thisOneKey, subjectShortName)
+    theCsrWeNeed = createNewCsrObjTLS(thisOneKey, subjectShortName, hashAlgo, theSans)
 
     fileName = thePath / "file.csr"
     with open(fileName, "wb") as f:
@@ -2170,13 +2179,14 @@ def main(argv):
     pathlength = None
     noEKUs = False
     basepath = ""
-    addSans = True
+    noSANs = ""
     allowedNames = list()
     disallowedNames = list()
     noKUs = False
-    KUs =list()
-    EKUs =list()
+    KUs = list()
+    EKUs = list()
     cpsURL = "https://github.com/markgamache/labPkiPy/blob/master/cps.txt"
+    theSans = list()
 
 
     try:
@@ -2198,6 +2208,7 @@ def main(argv):
                                                         "kus=",
                                                         "basepath=",
                                                         "nosans",
+                                                        "sans=",
                                                         "ncallowed=",
                                                         "ncdisallowed=",
                                                         "cps="])
@@ -2263,6 +2274,12 @@ def main(argv):
                  isItaCA = False
             else:
                 print("isca is not right, must be true or false. Useing the RFC defualts")    
+
+        elif opt == "--sans":
+             #split list
+            tempSans = arg.split(",")
+            for oSan in tempSans:
+                theSans.append( x509.DNSName(oSan.strip()))
 
         elif opt == "--noeku":
              noEKUs = True
@@ -2334,7 +2351,7 @@ def main(argv):
                 disallowedNames.append(nm)
 
         elif opt == "--nosans":
-             addSans = False
+             noSANs = True
 
         elif opt == "--basepath":
             if os.path.isdir(arg):
@@ -2516,6 +2533,14 @@ def main(argv):
         print(syntax)
         sys.exit(2)
 
+    if noSANs and len(theSans) > 0:
+        print("You can't set --nosans and --sans")
+        print(syntax)
+        sys.exit(2)
+
+
+
+    #pre-checks done
     
     if currentMode == None:
         print("Your -m or --mode must be set")
@@ -2556,7 +2581,11 @@ def main(argv):
         else:
             if isItaCA == "":
                 isItaCA = False
-            certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, addSans, isItaCA, noEKUs, KUs, EKUs, cpsURL)
+
+            if noSANs == "" and len(theSans) == 0:
+                theSans.append(subjectCN)
+
+            certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, noSANs, isItaCA, noEKUs, KUs, EKUs, cpsURL, theSans)
             print(certbk)
             sys.exit()
 
@@ -2581,7 +2610,7 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = False
 
-            signCsrNoQuestionsTlsServer(Path(csrFile) , signerCN, basepath, None, pathlength, vFrom, vTo, hash, addSans, isItaCA)   
+            signCsrNoQuestionsTlsServer(Path(csrFile) , signerCN, basepath, None, pathlength, vFrom, vTo, hash, noSANs, isItaCA)   
             print("Signed CSR {}\n\r".format(csrFile))
             sys.exit()
             
@@ -2630,7 +2659,10 @@ def main(argv):
             print(syntax)
             sys.exit()
         else:
-            createNewTlsCsrFile(subjectCN, basepath, None, keysize, hash)
+            if noSANs == "" and len(theSans) == 0:
+                theSans.append(subjectCN)
+
+            createNewTlsCsrFile(subjectCN, basepath, None, keysize, hash, theSans)
             print("Created TLS CSR for {}\n\r".format(subjectCN))
             sys.exit()
 
@@ -2643,7 +2675,7 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = False
 
-            cliback = createNewClientCert(subjectCN, signerCN, basepath, None, None, pathlength, keysize, vFrom, vTo, hash, addSans, isItaCA, KUs, EKUs)
+            cliback = createNewClientCert(subjectCN, signerCN, basepath, None, None, pathlength, keysize, vFrom, vTo, hash, noSANs, isItaCA, KUs, EKUs)
             print(cliback)
             sys.exit()
 

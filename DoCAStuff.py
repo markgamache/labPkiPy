@@ -506,6 +506,8 @@ def createNewSubCAClientAuth(subjectShortName: str,
                     pathLen = None,
                     hashAlgo = hashes.SHA256(),
                     isAcA: bool = True,
+                    allowedNames: list = None,  #currently unused 
+                    disallowedNames: list = None,  #currently unused 
                     KUs: list = list(), #currently unused 
                     EKUs: list = list() #currently unused 
                     ):

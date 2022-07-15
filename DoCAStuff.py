@@ -2191,7 +2191,7 @@ def main(argv):
     pathlength = None
     noEKUs = False
     basepath = ""
-    noSANs = ""
+    noSANs = False
     allowedNames = list()
     disallowedNames = list()
     noKUs = False

@@ -377,7 +377,7 @@ def createNewRootCA(shortName: str,
         pass
 
     #create key and key file
-    if keysize in ["1024", "2048", "4096"]:
+    if keysize in [1024, 2048, 4096]:
         thisOneKey = newRSAKeyPair(keysize)
     else:
         thisOneKey = newECCKeyPair(keysize)
@@ -421,7 +421,7 @@ def createNewSubCA(subjectShortName: str,
         os.mkdir(thePath)
 
     #create key and key file
-    if keysize in ["1024", "2048", "4096"]:
+    if keysize in [1024, 2048, 4096]:
         thisOneKey = newRSAKeyPair(keysize)
     else:
         thisOneKey = newECCKeyPair(keysize)
@@ -1166,7 +1166,7 @@ def createNewTlsCert(subjectShortName: str,
         os.mkdir(thePath)
 
     #create key and key file
-    if keysize in ["1024", "2048", "4096"]:
+    if keysize in [1024, 2048, 4096]:
         thisOneKey = newRSAKeyPair(keysize)
     else:
         thisOneKey = newECCKeyPair(keysize)
@@ -1505,7 +1505,7 @@ def createNewTlsCsrFile(subjectShortName: str,
     os.mkdir(thePath)
 
     #create key and key file
-    if keysize in ["1024", "2048", "4096"]:
+    if keysize in [1024, 2048, 4096]:
         thisOneKey = newRSAKeyPair(keysize)
     else:
         thisOneKey = newECCKeyPair(keysize)

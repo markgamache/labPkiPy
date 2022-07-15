@@ -2594,7 +2594,7 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = False
 
-            if noSANs == "" and len(theSans) == 0:
+            if noSANs == False and len(theSans) == 0:
                 theSans.append(subjectCN)
 
             certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, noSANs, isItaCA, noEKUs, KUs, EKUs, cpsURL, theSans)
@@ -2671,7 +2671,7 @@ def main(argv):
             print(syntax)
             sys.exit()
         else:
-            if noSANs == "" and len(theSans) == 0:
+            if noSANs == False and len(theSans) == 0:
                 theSans.append(subjectCN)
 
             createNewTlsCsrFile(subjectCN, basepath, None, keysize, hash, theSans)

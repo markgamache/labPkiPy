@@ -2191,7 +2191,7 @@ def main(argv):
     pathlength = None
     noEKUs = False
     basepath = ""
-    noSANs = False
+    noSANs = ""
     allowedNames = list()
     disallowedNames = list()
     noKUs = False
@@ -2594,8 +2594,9 @@ def main(argv):
             if isItaCA == "":
                 isItaCA = False
 
-            if noSANs == False and len(theSans) == 0:
+            if noSANs == "" and len(theSans) == 0:
                 theSans.append(subjectCN)
+                noSANs = False
 
             certbk = createNewTlsCert(subjectCN, signerCN, basepath, None, None, keysize, vFrom, vTo, hash, noSANs, isItaCA, noEKUs, KUs, EKUs, cpsURL, theSans)
             print(certbk)
@@ -2671,8 +2672,9 @@ def main(argv):
             print(syntax)
             sys.exit()
         else:
-            if noSANs == False and len(theSans) == 0:
+            if noSANs == "" and len(theSans) == 0:
                 theSans.append(subjectCN)
+                noSANs = False 
 
             createNewTlsCsrFile(subjectCN, basepath, None, keysize, hash, theSans)
             print("Created TLS CSR for {}\n\r".format(subjectCN))

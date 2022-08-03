@@ -258,7 +258,7 @@ def createNewRootCaCert(cnIn: str,
         cert = cert.add_extension( x509.NameConstraints(ncListAllow, ncListDisAllow), critical = True)
 
     #if KUs are present add the ext in accordance
-    if len(KUs) > 0:
+    if KUs != None and len(KUs) > 0:
         dSig = False 
         conCom = False
         keyEnc = False
@@ -309,7 +309,7 @@ def createNewRootCaCert(cnIn: str,
                                                 ), critical =True)
 
     #if EKUs are present, add them
-    if len(EKUs) > 0:
+    if EKUs != None and len(EKUs) > 0:
         realEKUList = list()
 
         for eku in EKUs:
@@ -2154,6 +2154,8 @@ def signCsrNoQuestionsSubCA(csrFile:Path(),
 def createCPSPols(preSignedData: cryptography.x509.base.CertificateBuilder, theUrl: str = "https://github.com/markgamache/labPkiPy/blob/master/cps.txt"):
     cpsoid = x509.ObjectIdentifier(x509.oid.CertificatePoliciesOID.CPS_QUALIFIER.dotted_string)
     qualifiers = []
+    if theUrl == None:
+        theUrl = "https://github.com/markgamache/labPkiPy/blob/master/cps.txt"
     qualifiers.append(theUrl)
     pinfo = x509.PolicyInformation(cpsoid, qualifiers)
         
@@ -2371,6 +2373,7 @@ def main(argv):
             else:
                 print("Your base path is not a directory. Try again or leave it blank for the current dir")
                 print(syntax)
+                #todo, remove comment if not in debug
                 sys.exit(2)
 
         elif opt == "--pathlength":
